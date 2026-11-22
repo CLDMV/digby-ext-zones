@@ -20,12 +20,8 @@
  * is pure, so file resolution is the caller's decision, and generation is unimplemented.
  */
 
-import { WireError, WireErrorCode, canonicalName, nameKey, parseRecord, parseTtl } from "./codec.mjs";
+import { CLASS, TYPE, WireError, WireErrorCode, canonicalName, nameKey, parseRecord, parseTtl } from "./codec.mjs";
 import { splitRecords } from "./reader-lines.mjs";
-
-// The codec's IN class and SOA type numbers; the seam does not re-export the CLASS / TYPE tables.
-const CLASS_IN = 1;
-const TYPE_SOA = 6;
 
 /**
  * A parsed zone value (CLDMV/digby#14's `zone` record shape, as far as the reader fills it).
@@ -106,10 +102,10 @@ export function parseZoneFile(text, { kind = "primary" } = {}) {
 		if (rec.blankOwner && lastOwner === undefined) throw bad(`line ${rec.line}: the record has no owner and no previous owner to inherit`);
 		const line = rec.blankOwner ? `${lastOwner} ${rec.text}` : rec.text;
 		const parsed = withLine(() => parseRecord(line, { origin, ttl: ttlDirective ?? soaMinimum }), rec.line);
-		if (parsed.class !== CLASS_IN) throw bad(`line ${rec.line}: only the IN class is supported, got ${parsed.class}`);
+		if (parsed.class !== CLASS.IN) throw bad(`line ${rec.line}: only the IN class is supported, got ${parsed.class}`);
 		lastOwner = parsed.name;
 
-		if (parsed.type === TYPE_SOA) {
+		if (parsed.type === TYPE.SOA) {
 			if (soa !== null) throw bad(`line ${rec.line}: a zone file has one SOA record`);
 			soa = parsed.data;
 			zoneName = parsed.name;
