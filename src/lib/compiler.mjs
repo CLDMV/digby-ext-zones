@@ -21,7 +21,7 @@
  * `docs/snapshot.md`; that document and this file are meant to be read together.
  */
 
-import { formatName, parseName } from "./codec.mjs";
+import { TYPE, formatName, parseName } from "./codec.mjs";
 import { ZoneErrorCode, refuse } from "./errors.mjs";
 
 /** The rrset source values (#14). `manual` outranks the others inside one view. */
@@ -39,11 +39,8 @@ export const IMPLICIT_VIEW = "all";
 /** The ttl used when an rrset has none and the zone has no `defaultTtl`. */
 export const DEFAULT_TTL = 3600;
 
-/** The type whose rrsets are ignored on input: the SOA lives on the zone value, never in an rrset. */
-const SOA_TYPE = "SOA";
-
 /** The glue address types: A/AAAA at a delegation name. */
-const GLUE_TYPES = Object.freeze(["A", "AAAA"]);
+const GLUE_TYPES = Object.freeze([TYPE.A, TYPE.AAAA]);
 
 /**
  * Compile one zone into its frozen, per-view snapshot.
@@ -154,7 +151,9 @@ function validateRrset(zone, zoneLabels, zoneKey, hasViews, viewNames, rr, index
 		refuse(ZoneErrorCode.BAD_OWNER, `rrset for "${rr.name}" claims zone ${JSON.stringify(rr.zone)}, not "${zone.name}"`, ctx);
 	}
 	checkWildcard(labels, rr.name, ctx);
-	if (typeof rr.type !== "string" || rr.type.length === 0) refuse(ZoneErrorCode.BAD_RECORD, `rrset for "${rr.name}" has no type`, ctx);
+	if (!Number.isInteger(rr.type) || rr.type < 0 || rr.type > 0xffff) {
+		refuse(ZoneErrorCode.BAD_RECORD, `rrset for "${rr.name}" has type ${JSON.stringify(rr.type)}, which is not a type number (0-65535)`, ctx);
+	}
 	if (rr.view !== undefined && rr.view !== null) {
 		if (!hasViews) refuse(ZoneErrorCode.BAD_VIEW, `rrset for "${rr.name}" is tagged view "${rr.view}" but the zone has no views`, ctx);
 		if (!viewNames.includes(rr.view)) refuse(ZoneErrorCode.BAD_VIEW, `rrset for "${rr.name}" is tagged view "${rr.view}", which the zone does not list`, ctx);
@@ -250,7 +249,7 @@ function compileView(zone, zoneKey, view, rrsetList, soa) {
 	// 1. Group every rrset visible in this view (its own tag, or null = all views) by name+type.
 	const groups = new Map();
 	for (const rr of rrsetList) {
-		if (rr.type === SOA_TYPE) continue; // the SOA lives on the zone value; an rrset cannot override it
+		if (rr.type === TYPE.SOA) continue; // the SOA lives on the zone value; an rrset cannot override it
 		if (rr.view !== view && rr.view !== null && rr.view !== undefined) continue;
 		const gk = foldKey(rr.name) + "\u0000" + rr.type;
 		let group = groups.get(gk);
@@ -272,7 +271,7 @@ function compileView(zone, zoneKey, view, rrsetList, soa) {
 	}
 
 	// 3. Merge the surviving entries of each group into one snapshot rrset.
-	const nodes = { [zoneKey]: { ent: false, delegation: false, glue: false, rrsets: { [SOA_TYPE]: soa } } };
+	const nodes = { [zoneKey]: { ent: false, delegation: false, glue: false, rrsets: { [TYPE.SOA]: soa } } };
 	for (const group of groups.values()) {
 		let node = nodes[group.name];
 		if (!node) nodes[group.name] = node = { ent: false, delegation: false, glue: false, rrsets: {} };
@@ -289,17 +288,17 @@ function compileView(zone, zoneKey, view, rrsetList, soa) {
 
 	// 4. CNAME rules, per view, on the merged data.
 	for (const [key, node] of Object.entries(nodes)) {
-		const cname = node.rrsets.CNAME;
+		const cname = node.rrsets[TYPE.CNAME];
 		if (!cname) continue;
-		if (key === zoneKey) refuse(ZoneErrorCode.CNAME_AT_APEX, "a CNAME at the zone apex", { zone: zone.name, view, type: "CNAME", owner: key });
-		if (cname.records.length > 1) refuse(ZoneErrorCode.CNAME_MULTIPLE, `"${key}" carries ${cname.records.length} CNAME records in view "${view}"`, { zone: zone.name, view, type: "CNAME", owner: key });
-		if (Object.keys(node.rrsets).length > 1) refuse(ZoneErrorCode.CNAME_COEXISTENCE, `"${key}" has a CNAME beside other data in view "${view}"`, { zone: zone.name, view, type: "CNAME", owner: key });
+		if (key === zoneKey) refuse(ZoneErrorCode.CNAME_AT_APEX, "a CNAME at the zone apex", { zone: zone.name, view, type: TYPE.CNAME, owner: key });
+		if (cname.records.length > 1) refuse(ZoneErrorCode.CNAME_MULTIPLE, `"${key}" carries ${cname.records.length} CNAME records in view "${view}"`, { zone: zone.name, view, type: TYPE.CNAME, owner: key });
+		if (Object.keys(node.rrsets).length > 1) refuse(ZoneErrorCode.CNAME_COEXISTENCE, `"${key}" has a CNAME beside other data in view "${view}"`, { zone: zone.name, view, type: TYPE.CNAME, owner: key });
 	}
 
 	// 5. Zone cuts: a non-apex name with an NS rrset. Its A/AAAA are glue; everything strictly below a cut is glue-only.
 	const cutKeys = [];
 	for (const [key, node] of Object.entries(nodes)) {
-		if (key !== zoneKey && node.rrsets.NS) {
+		if (key !== zoneKey && node.rrsets[TYPE.NS]) {
 			node.delegation = true;
 			cutKeys.push(key);
 		}
@@ -311,8 +310,8 @@ function compileView(zone, zoneKey, view, rrsetList, soa) {
 	}
 
 	// 6. The apex needs its NS (the SOA is already in place from the zone value).
-	if (!nodes[zoneKey].rrsets.NS) {
-		refuse(ZoneErrorCode.APEX_NS_REQUIRED, `zone "${zone.name}" has no NS rrset at its apex`, { zone: zone.name, view, type: "NS" });
+	if (!nodes[zoneKey].rrsets[TYPE.NS]) {
+		refuse(ZoneErrorCode.APEX_NS_REQUIRED, `zone "${zone.name}" has no NS rrset at its apex`, { zone: zone.name, view, type: TYPE.NS });
 	}
 
 	// 7. Empty non-terminals: a name with no records of its own but with descendants that have them EXISTS (the server
