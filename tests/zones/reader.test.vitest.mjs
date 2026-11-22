@@ -20,10 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 import { parseZoneFile } from "../../src/lib/reader.mjs";
-import { WireError, WireErrorCode } from "../../src/lib/codec.mjs";
-
-// Numeric type numbers (RFC 1035 / RFC 3596) — the codec seam does not re-export the TYPE table.
-const TYPE = { A: 1, NS: 2, CNAME: 5, SOA: 6, PTR: 12, MX: 15, TXT: 16, AAAA: 28 };
+import { TYPE, WireError, WireErrorCode } from "../../src/lib/codec.mjs";
 
 const enc = (s) => new TextEncoder().encode(s);
 
