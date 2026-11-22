@@ -24,7 +24,7 @@ Compilation is pure: no I/O, no rummage calls, no filesystem. One call, `compile
           delegation: false,    // zone cut: a non-apex name with an NS rrset
           glue: false,          // the name lies strictly below a zone cut in this view
           rrsets: {
-            "<TYPE>": {
+            "<type>": {      // the rrset's type NUMBER as a decimal object key (see "Type numbers")
               ttl: 3600,        // explicit ttl, else the zone's defaultTtl
               records: [ /* codec-parsed rdata values, in input order */ ],
               source: "manual", // manual | machines | transfer | acme
@@ -39,7 +39,7 @@ Compilation is pure: no I/O, no rummage calls, no filesystem. One call, `compile
 }
 ```
 
-Per-type rrset entries appear under the type's mnemonic as given on the rrset (`"A"`, `"AAAA"`, `"NS"`, `"CNAME"`, `"PTR"`, `"TXT"`, ...). Node keys and the view map are plain frozen objects (not `Map`s) so snapshots stay JSON-dumpable for the history drawer.
+Per-type rrset entries appear under the rrset's type number as a decimal object key — `rrsets["1"]` is the A entry, `rrsets["2"]` NS, `rrsets["5"]` CNAME, `rrsets["12"]` PTR, and so on (the constants live in the codec's `TYPE`; an object key is necessarily the number's decimal string). Types are numeric end to end: the rrset value's `type` field is a non-negative integer ≤ 65535 straight from the codec's `parseRecord`, and mnemonics are presentation-only (`typeToString`). Node keys and the view map are plain frozen objects (not `Map`s) so snapshots stay JSON-dumpable for the history drawer.
 
 ### Name keys
 
@@ -114,7 +114,7 @@ Every refusal throws `ZoneError` (extends the codec's `WireError`, via `./codec.
 | `BAD_TTL` | a ttl that is neither null/absent nor a non-negative integer (on the rrset or `zone.defaultTtl`) |
 | `BAD_VIEW` | an rrset tagged a view the zone does not list, or tagged at all on a viewless zone |
 | `BAD_SOURCE` | a source outside `manual`/`machines`/`transfer`/`acme` |
-| `BAD_RECORD` | an rrset with no records, a non-array `records`, a missing type, or not an object |
+| `BAD_RECORD` | an rrset with no records, a non-array `records`, a `type` that is not a number in 0-65535, or not an object |
 | `BAD_WILDCARD` | a `*` anywhere but the owner's first label (see the wildcard rule) |
 | `CNAME_AT_APEX` | a CNAME at the zone apex |
 | `CNAME_COEXISTENCE` | a CNAME beside any other data for the same name in the same view |
