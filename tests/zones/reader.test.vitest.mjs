@@ -61,14 +61,14 @@ describe("directives", () => {
 			].join("\n")
 		);
 		expect(zone.name).toBe("a.test.");
-		expect(rrsets.map((r) => r.name)).toEqual(["a.test.", "www.a.test.", "www2.b.test."]);
+		expect(rrsets.map((r) => r.name)).toEqual(["www.a.test.", "www2.b.test."]);
 	});
 
 	it("resolves a relative $ORIGIN against the previous origin", () => {
 		const { rrsets } = parseZoneFile(
 			["$ORIGIN a.test.", "@ 3600 IN SOA ns admin 1 7200 900 1209600 300", "$ORIGIN sub", "www A 1.2.3.4"].join("\n")
 		);
-		expect(rrsets[1].name).toBe("www.sub.a.test.");
+		expect(rrsets[0].name).toBe("www.sub.a.test.");
 	});
 
 	it("applies $TTL to records without their own TTL, and a later $TTL replaces it", () => {
@@ -76,14 +76,14 @@ describe("directives", () => {
 			["$ORIGIN x.test.", "@ 3600 IN SOA ns admin 1 7200 900 1209600 300", "$TTL 120", "@ TXT \"a\""].join("\n")
 		);
 		expect(zone.defaultTtl).toBe(120);
-		expect(rrsets[1].ttl).toBe(120);
+		expect(rrsets[0].ttl).toBe(120);
 	});
 
 	it("accepts $TTL 0 (RFC 2308)", () => {
 		const { rrsets } = parseZoneFile(
 			["$ORIGIN x.test.", "$TTL 0", "@ 3600 IN SOA ns admin 1 7200 900 1209600 300", "@ TXT \"a\""].join("\n")
 		);
-		expect(rrsets[1].ttl).toBe(0);
+		expect(rrsets[0].ttl).toBe(0);
 	});
 
 	it("refuses $INCLUDE — the reader is pure, the caller resolves files", () => {
@@ -108,15 +108,15 @@ describe("directives", () => {
 describe("the standard omissions", () => {
 	it("inherits the owner across blank-name lines (space- and tab-led)", () => {
 		const { rrsets } = parseZoneFile(baseZone("www A 1.2.3.4", " 3600 TXT \"x\"", "\tAAAA fd00::1"));
-		expect(rrsets.map((r) => r.name)).toEqual(["x.test.", "www.x.test.", "www.x.test.", "www.x.test."]);
-		expect(rrsets[1].type).toBe(TYPE.A);
-		expect(rrsets[2].type).toBe(TYPE.TXT);
-		expect(rrsets[3].type).toBe(TYPE.AAAA);
+		expect(rrsets.map((r) => r.name)).toEqual(["www.x.test.", "www.x.test.", "www.x.test."]);
+		expect(rrsets[0].type).toBe(TYPE.A);
+		expect(rrsets[1].type).toBe(TYPE.TXT);
+		expect(rrsets[2].type).toBe(TYPE.AAAA);
 	});
 
 	it("prefers an explicit record TTL over $TTL", () => {
 		const { rrsets } = parseZoneFile(baseZone("www 60 A 1.2.3.4"));
-		expect(rrsets[1].ttl).toBe(60);
+		expect(rrsets[0].ttl).toBe(60);
 	});
 
 	it("falls back from $TTL to the SOA minimum, in that order", () => {
@@ -125,7 +125,7 @@ describe("the standard omissions", () => {
 			["$ORIGIN x.test.", "@ 3600 IN SOA ns admin 1 7200 900 1209600 86400", "@ TXT \"a\""].join("\n")
 		);
 		expect(zone.defaultTtl).toBe(86400);
-		expect(rrsets[1].ttl).toBe(86400);
+		expect(rrsets[0].ttl).toBe(86400);
 	});
 
 	it("errors when a record has no TTL and no default exists", () => {
@@ -135,7 +135,7 @@ describe("the standard omissions", () => {
 
 	it("defaults an omitted class to IN and refuses any other class", () => {
 		const { rrsets } = parseZoneFile(baseZone("www TXT \"a\"")); // no class token at all
-		expect(rrsets[1].name).toBe("www.x.test.");
+		expect(rrsets[0].name).toBe("www.x.test.");
 		const err = wireError(() => parseZoneFile(baseZone("www CH TXT \"a\"")));
 		expect(err.message).toMatch(/only the IN class/);
 	});
@@ -144,39 +144,39 @@ describe("the standard omissions", () => {
 describe("multi-line records, quoting and escapes", () => {
 	it("joins a parenthesised record spanning 3+ lines, with blank lines and comments inside", () => {
 		const { rrsets } = parseZoneFile(baseZone("@ 3600 IN TXT (\"a\"", "  \"b\"", "", "  \"c\") ; trailing note"));
-		expect(rrsets).toHaveLength(2);
-		expect(rrsets[1].records[0].strings.map((s) => Buffer.from(s).toString())).toEqual(["a", "b", "c"]);
-		expect(rrsets[1].comment).toBe("trailing note");
+		expect(rrsets).toHaveLength(1);
+		expect(rrsets[0].records[0].strings.map((s) => Buffer.from(s).toString())).toEqual(["a", "b", "c"]);
+		expect(rrsets[0].comment).toBe("trailing note");
 	});
 
 	it("keeps `;` and `(` inside quoted strings, and unescapes \\\"", () => {
 		const { rrsets } = parseZoneFile(baseZone("@ 3600 IN TXT \"a;b(c)d\\\"e\""));
-		expect(Buffer.from(rrsets[1].records[0].strings[0]).toString()).toBe('a;b(c)d"e');
+		expect(Buffer.from(rrsets[0].records[0].strings[0]).toString()).toBe('a;b(c)d"e');
 	});
 
 	it("handles \\DDD escapes in rdata and escaped dots in names", () => {
 		const { rrsets } = parseZoneFile(
 			baseZone("@ 3600 IN TXT \"x\\065y\"", "router\\.point A 1.2.3.4", "aliased CNAME target\\.dot")
 		);
-		expect(Buffer.from(rrsets[1].records[0].strings[0]).toString()).toBe("xAy");
-		expect(rrsets[2].name).toBe("router\\.point.x.test.");
-		expect(rrsets[3].records[0].target).toBe("target\\.dot.x.test.");
+		expect(Buffer.from(rrsets[0].records[0].strings[0]).toString()).toBe("xAy");
+		expect(rrsets[1].name).toBe("router\\.point.x.test.");
+		expect(rrsets[2].records[0].target).toBe("target\\.dot.x.test.");
 	});
 });
 
 describe("grouping into rrsets", () => {
 	it("groups only consecutive records with the same name and type, in file order", () => {
 		const { rrsets } = parseZoneFile(baseZone("www A 1.2.3.4", "other A 1.2.3.6", "www A 1.2.3.5"));
-		expect(rrsets).toHaveLength(4);
-		expect(rrsets[1].records).toEqual([{ address: "1.2.3.4" }]);
-		expect(rrsets[3].records).toEqual([{ address: "1.2.3.5" }]);
+		expect(rrsets).toHaveLength(3);
+		expect(rrsets[0].records).toEqual([{ address: "1.2.3.4" }]);
+		expect(rrsets[2].records).toEqual([{ address: "1.2.3.5" }]);
 	});
 
 	it("groups case-insensitively on the owner name, keeping the first spelling", () => {
 		const { rrsets } = parseZoneFile(baseZone("WWW A 1.2.3.4", "www A 1.2.3.5"));
-		expect(rrsets).toHaveLength(2);
-		expect(rrsets[1].name).toBe("WWW.x.test.");
-		expect(rrsets[1].records).toEqual([{ address: "1.2.3.4" }, { address: "1.2.3.5" }]);
+		expect(rrsets).toHaveLength(1);
+		expect(rrsets[0].name).toBe("WWW.x.test.");
+		expect(rrsets[0].records).toEqual([{ address: "1.2.3.4" }, { address: "1.2.3.5" }]);
 	});
 });
 
@@ -235,26 +235,6 @@ describe("the homelab.cldmv.net fixture", () => {
 	it("parses the rrsets in detail: names, TTLs, types, rdata shapes, grouping, order, comments", () => {
 		const { rrsets } = parseZoneFile(HOMELAB);
 		expect(rrsets).toEqual([
-			{
-				zone: "homelab.cldmv.net.",
-				name: "homelab.cldmv.net.",
-				type: TYPE.SOA,
-				view: null,
-				ttl: 3600,
-				records: [
-					{
-						mname: "ns1.homelab.cldmv.net.",
-						rname: "admin.cldmv.net.",
-						serial: 2026112201,
-						refresh: 7200,
-						retry: 900,
-						expire: 1209600,
-						minimum: 86400
-					}
-				],
-				comment: "minimum", // the trailing comment of the record's last (closing) line
-				source: "manual"
-			},
 			{
 				zone: "homelab.cldmv.net.",
 				name: "homelab.cldmv.net.",
@@ -468,26 +448,6 @@ describe("the quack.shellback.net fixture", () => {
 			defaultTtl: 300
 		});
 		expect(rrsets).toEqual([
-			{
-				zone: "quack.shellback.net.",
-				name: "quack.shellback.net.",
-				type: TYPE.SOA,
-				view: null,
-				ttl: 300,
-				records: [
-					{
-						mname: "ns.quack.shellback.net.",
-						rname: "hostmaster.quack.shellback.net.",
-						serial: 1,
-						refresh: 7200,
-						retry: 900,
-						expire: 1209600,
-						minimum: 300
-					}
-				],
-				comment: null,
-				source: "manual"
-			},
 			{
 				zone: "quack.shellback.net.",
 				name: "quack.shellback.net.",

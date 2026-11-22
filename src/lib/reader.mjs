@@ -54,7 +54,7 @@ import { splitRecords } from "./reader-lines.mjs";
  * across blank-name lines (a line starting with whitespace), the TTL defaulting to $TTL then the SOA's minimum, and the
  * class defaulting to IN (any other class is refused — this package is IN-only). Records are grouped into rrsets when
  * consecutive lines share owner, type and class (owner names compared case-insensitively); the codec's rdata values keep
- * file order within the group.
+ * file order within the group. The SOA record is routed solely into `zone.soa` and never emitted as an rrset.
  *
  * @param {string} text - the master file
  * @param {{ kind?: string }} [options]
@@ -110,6 +110,8 @@ export function parseZoneFile(text, { kind = "primary" } = {}) {
 			soa = parsed.data;
 			zoneName = parsed.name;
 			soaMinimum = parsed.data.minimum;
+			// the SOA belongs to zone.soa only — it is never emitted as an rrset (the snapshot's compiler ignores SOA rrsets)
+			continue;
 		}
 
 		// Group consecutive records with the same owner (case-insensitive) and type; the class is IN throughout.
