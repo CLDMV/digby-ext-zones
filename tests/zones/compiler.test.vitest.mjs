@@ -228,7 +228,29 @@ describe("CNAME rules", () => {
 		expectRefusal(() => compileZone(homelabZone(), rs, null, { now: NOW }), ZoneErrorCode.CNAME_MULTIPLE);
 	});
 
-	it("PLACEHOLDER-CNAME-HUNK", () => {});
+	it("refuses a manual CNAME beside a sourced A: the override is name+type, so cross-type shadowing surfaces as a refusal", () => {
+		const rs = [
+			rr("homelab.cldmv.net.", TYPE.NS, [NS("ns1.homelab.cldmv.net.")]),
+			rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")], { view: "lan", source: "machines" }),
+			rr("app.homelab.cldmv.net.", TYPE.CNAME, [CNAME("gw.homelab.cldmv.net.")], { view: "lan" })
+		];
+		// The manual CNAME and the sourced A are different name+type groups — neither overrides the other, and
+		// CNAME coexistence then refuses the view. The sourced A must be removed through record.set/remove first.
+		expectRefusal(() => compileZone(homelabZone(), rs, null, { now: NOW }), ZoneErrorCode.CNAME_COEXISTENCE, { view: "lan" });
+	});
+
+	it("manual CNAME drops a sourced CNAME for the same name+type in the same view", () => {
+		const rs = [
+			rr("homelab.cldmv.net.", TYPE.NS, [NS("ns1.homelab.cldmv.net.")]),
+			rr("app.homelab.cldmv.net.", TYPE.CNAME, [CNAME("old-target.homelab.cldmv.net.")], { view: "lan", source: "machines" }),
+			rr("app.homelab.cldmv.net.", TYPE.CNAME, [CNAME("gw.homelab.cldmv.net.")], { view: "lan" })
+		];
+		const snap = compileZone(homelabZone(), rs, null, { now: NOW });
+		const node = snap.views.lan.nodes["app.homelab.cldmv.net."];
+		expect(Object.keys(node.rrsets)).toEqual([String(TYPE.CNAME)]);
+		expect(node.rrsets[TYPE.CNAME].records).toEqual([CNAME("gw.homelab.cldmv.net.")]);
+		expect(node.rrsets[TYPE.CNAME].source).toBe("manual");
+	});
 });
 
 describe("empty non-terminals", () => {
