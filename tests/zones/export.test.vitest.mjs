@@ -177,7 +177,7 @@ const NS = (target) => ({ target });
 const A = (address) => ({ address });
 
 const SNAPSHOT_RRSETS = [
-	rr("homelab.cldmv.net.", TYPE.NS, [NS("ns1.homelab.cldmv.net."), NS("ns2.homelab.cldmv.net.")], { ttl: 86400 }),
+	rr("homelab.cldmv.net.", TYPE.NS, [NS("ns1.homelab.cldmv.net."), NS("ns2.cldmv.net.")], { ttl: 86400 }),
 	rr("gw.homelab.cldmv.net.", TYPE.A, [A("10.0.0.1")], { ttl: null }),
 	rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")], { ttl: 300, comment: "app box", view: "lan" }),
 	rr("sub.homelab.cldmv.net.", TYPE.NS, [NS("ns1.sub.homelab.cldmv.net.")], { ttl: 86400 }),
@@ -189,6 +189,9 @@ const SNAPSHOT_RRSETS = [
 
 /** The compiled two-view snapshot, serial and SOA rdata aligned on 2026112201. */
 const SNAPSHOT = compileZone(snapshotZone(), SNAPSHOT_RRSETS, null, { now: NOW });
+
+/** The snapshot rrsets with the lan-tagged record dropped — the input for the viewless fixtures (a viewless zone refuses view tags). */
+const VIEWLESS_RRSETS = SNAPSHOT_RRSETS.filter((r) => r.view === null);
 
 // ---------------------------------------------------------------------------
 // Round-trips
@@ -330,16 +333,16 @@ describe("exportSnapshot: per-view text", () => {
 	it("exports each view separately, and the views' texts differ where their data differs", () => {
 		const lan = exportSnapshot(SNAPSHOT, { view: "lan" });
 		const tailnet = exportSnapshot(SNAPSHOT, { view: "tailnet" });
-		expect(lan).not.toBe(tailnet);
+		expect(lan === tailnet).toBe(false);
 		expect(lan.includes("app 300 A 10.0.0.2")).toBe(true);
 		expect(tailnet.includes("app ")).toBe(false);
 	});
 
 	it("defaults to the single implicit view of a viewless zone", () => {
-		const snap = compileZone(snapshotZone({ views: undefined }), SNAPSHOT_RRSETS, null, { now: NOW });
+		const snap = compileZone(snapshotZone({ views: undefined }), VIEWLESS_RRSETS, null, { now: NOW });
 		const text = exportSnapshot(snap); // no view given
 		const lines = new Set(text.split("\n"));
-		expect(lines.has("app 300 A 10.0.0.2 ; app box")).toBe(true);
+		expect(lines.has("gw A 10.0.0.1")).toBe(true);
 	});
 
 	it("refuses a multi-view snapshot with no explicit view, an unknown view, and a disabled snapshot", () => {
@@ -366,7 +369,7 @@ describe("exportSnapshot → parse → compile round-trips", () => {
 	}
 
 	it("keeps the serial still on a viewless zone too", () => {
-		const snap = compileZone(snapshotZone({ views: undefined }), SNAPSHOT_RRSETS, null, { now: NOW });
+		const snap = compileZone(snapshotZone({ views: undefined }), VIEWLESS_RRSETS, null, { now: NOW });
 		const { zone, rrsets } = parseZoneFile(exportSnapshot(snap));
 		const back = compileZone(zone, rrsets, snap, { now: NOW });
 		expect(back.serial).toBe(snap.serial);
