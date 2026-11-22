@@ -255,7 +255,7 @@ describe("the homelab.cldmv.net fixture", () => {
 						minimum: 86400
 					}
 				],
-				comment: null,
+				comment: "minimum", // the trailing comment of the record's last (closing) line
 				source: "manual"
 			},
 			{
@@ -550,7 +550,7 @@ describe("malformed files", () => {
 	});
 
 	it("errors when the file has no SOA record", () => {
-		const err = wireError(() => parseZoneFile("$ORIGIN x.test.\nwww A 1.2.3.4"));
+		const err = wireError(() => parseZoneFile("$ORIGIN x.test.\nwww 3600 A 1.2.3.4"));
 		expect(err.message).toMatch(/no SOA record/);
 	});
 });
