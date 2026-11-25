@@ -22,7 +22,7 @@
  */
 
 import { TYPE, formatName, parseName } from "./codec.mjs";
-import { ZoneErrorCode, refuse } from "./errors.mjs";
+import { ZoneError, ZoneErrorCode, refuse } from "./errors.mjs";
 
 /** The rrset source values (#14). `manual` outranks the others inside one view. */
 export const SOURCES = Object.freeze(["manual", "machines", "transfer", "acme"]);
@@ -115,6 +115,9 @@ function validateZone(zone) {
 	try {
 		parseName(zone.name);
 	} catch (err) {
+		// A ZoneError escaping the seam is this package's own wiring refusal (e.g. WIRE_NOT_READY) — never a
+		// name-parse failure; only a wire failure gets mapped, with the original as cause.
+		if (err instanceof ZoneError) throw err;
 		refuse(ZoneErrorCode.BAD_ZONE, `zone name "${zone.name}" does not parse as an absolute name`, { zone: zone.name, cause: err });
 	}
 	if (!ZONE_KINDS.includes(zone.kind)) refuse(ZoneErrorCode.BAD_ZONE, `zone kind ${JSON.stringify(zone.kind)} is not one of ${ZONE_KINDS.join(", ")}`, { zone: zone.name });
@@ -180,6 +183,8 @@ function parseOwner(name, ctx) {
 	try {
 		return parseName(name);
 	} catch (err) {
+		// Same rule as validateZone: a ZoneError from the seam is a wiring refusal, not a parse failure.
+		if (err instanceof ZoneError) throw err;
 		return refuse(ZoneErrorCode.BAD_OWNER, `"${name}" does not parse as an absolute name`, { ...ctx, cause: err });
 	}
 }
