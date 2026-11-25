@@ -14,8 +14,11 @@ export default defineConfig({
 	root,
 	test: {
 		include: ["tests/**/*.test.vitest.mjs"],
-		exclude: ["node_modules"],
+		// tests/needs-wire/ parks the reader/exporter suites until the wire extension lands (#42) — see its README.
+		exclude: ["node_modules", "tests/needs-wire/**"],
 		environment: "node",
+		// Capture the fake wire surface before any test loads (the root leaf's activate() does this for real).
+		setupFiles: ["./tests/setup-wire.mjs"],
 		// Inline slothlet and rummage so composed leaves are attributed in coverage (see slothlet docs/TESTING.md).
 		server: { deps: { inline: [/@cldmv\/slothlet/, /@cldmv\/rummage/] } },
 		testTimeout: 30000,
