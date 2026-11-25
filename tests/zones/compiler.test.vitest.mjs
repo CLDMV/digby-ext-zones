@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 import { compileZone, DEFAULT_TTL, IMPLICIT_VIEW } from "../../src/lib/compiler.mjs";
-import { TYPE } from "../../src/lib/codec.mjs";
+import { TYPE, WireError } from "../../src/lib/codec.mjs";
 import { ZoneError, ZoneErrorCode } from "../../src/lib/errors.mjs";
 
 /** 2026-11-22, pinned for every `date` serial test. */
@@ -106,6 +106,18 @@ describe("apex requirements", () => {
 });
 
 describe("zone value validation", () => {
+	it("threads a wire parse failure underneath as cause (the fake's RELATIVE_NAME refusal)", () => {
+		let err;
+		try {
+			compileZone(homelabZone({ name: "homelab.cldmv.net" }), [], null, { now: NOW });
+		} catch (e) {
+			err = e;
+		}
+		expect(err).toBeInstanceOf(ZoneError);
+		expect(err.code).toBe(ZoneErrorCode.BAD_ZONE);
+		expect(err.cause).toBeInstanceOf(WireError);
+	});
+
 	it("refuses an unknown kind", () => {
 		expectRefusal(() => compileZone(homelabZone({ kind: "tertiary" }), [], null, { now: NOW }), ZoneErrorCode.BAD_ZONE);
 	});
