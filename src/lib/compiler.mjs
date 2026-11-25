@@ -39,8 +39,14 @@ export const IMPLICIT_VIEW = "all";
 /** The ttl used when an rrset has none and the zone has no `defaultTtl`. */
 export const DEFAULT_TTL = 3600;
 
-/** The glue address types: A/AAAA at a delegation name. */
-const GLUE_TYPES = Object.freeze([TYPE.A, TYPE.AAAA]);
+/**
+ * The glue address types: A/AAAA at a delegation name. Read from the seam PER CALL — the seam's surface may not be
+ * captured when this module loads (nothing may read it at module-eval time).
+ * @returns {number[]}
+ */
+function glueTypes() {
+	return [TYPE.A, TYPE.AAAA];
+}
 
 /**
  * Compile one zone into its frozen, per-view snapshot.
@@ -306,7 +312,7 @@ function compileView(zone, zoneKey, view, rrsetList, soa) {
 	for (const [key, node] of Object.entries(nodes)) {
 		if (cutKeys.some((cut) => key !== cut && below(key, cut))) node.glue = true;
 		if (!node.delegation) continue;
-		for (const type of GLUE_TYPES) if (node.rrsets[type]) node.rrsets[type].glue = true;
+		for (const type of glueTypes()) if (node.rrsets[type]) node.rrsets[type].glue = true;
 	}
 
 	// 6. The apex needs its NS (the SOA is already in place from the zone value).
