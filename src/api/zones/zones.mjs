@@ -15,6 +15,7 @@ import { settings as _settingsSchema } from "../../../sql/settings.mjs";
 // Uncomment when you have tables to query:
 // import { eq } from "@cldmv/rummage/storage";
 // import { someTable } from "../../../sql/schema.mjs";
+import { setWire } from "../../lib/codec.mjs";
 
 export const name = "zones";
 
@@ -24,6 +25,13 @@ export function activate(context) {
 	// validate against + which scope to read/write. Must run before any
 	// cross-extension call into our settings leaves.
 	setupSettings({ settings: _settingsSchema, scope: context.storage, extId: context.extId });
+
+	// Capture the wire extension's surface into the codec seam (src/lib/codec.mjs). `self` is
+	// in-call-only — activate is a call, so this is the one place `self.wire` resolves; the seam
+	// holds the capture and every lib read resolves it per call. Requires the wire extension
+	// (manifest `requires: ["@cldmv/digby-ext-wire"]`), mounted and activated before this runs;
+	// a wrong-shaped surface fails fast here.
+	setWire(self.wire);
 
 	// Reading own settings (fast — the storage tier directly, no access check for self):
 	// const theme = await context.storage.settings.get("theme");
