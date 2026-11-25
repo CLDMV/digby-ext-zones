@@ -108,8 +108,8 @@ function validateZone(zone) {
 	if (typeof zone.name !== "string" || zone.name.length === 0) refuse(ZoneErrorCode.BAD_ZONE, "a zone needs a name", { zone: String(zone.name) });
 	try {
 		parseName(zone.name);
-	} catch {
-		refuse(ZoneErrorCode.BAD_ZONE, `zone name "${zone.name}" does not parse as an absolute name`, { zone: zone.name });
+	} catch (err) {
+		refuse(ZoneErrorCode.BAD_ZONE, `zone name "${zone.name}" does not parse as an absolute name`, { zone: zone.name, cause: err });
 	}
 	if (!ZONE_KINDS.includes(zone.kind)) refuse(ZoneErrorCode.BAD_ZONE, `zone kind ${JSON.stringify(zone.kind)} is not one of ${ZONE_KINDS.join(", ")}`, { zone: zone.name });
 	if (zone.views !== undefined && zone.views !== null) {
@@ -173,8 +173,8 @@ function validateRrset(zone, zoneLabels, zoneKey, hasViews, viewNames, rr, index
 function parseOwner(name, ctx) {
 	try {
 		return parseName(name);
-	} catch {
-		return refuse(ZoneErrorCode.BAD_OWNER, `"${name}" does not parse as an absolute name`, ctx);
+	} catch (err) {
+		return refuse(ZoneErrorCode.BAD_OWNER, `"${name}" does not parse as an absolute name`, { ...ctx, cause: err });
 	}
 }
 
