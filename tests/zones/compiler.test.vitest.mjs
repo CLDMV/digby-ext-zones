@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { compileZone, DEFAULT_TTL, IMPLICIT_VIEW } from "../../src/lib/compiler.mjs";
+import { below, compileZone, DEFAULT_TTL, IMPLICIT_VIEW } from "../../src/lib/compiler.mjs";
 import { TYPE, WireError } from "../../src/lib/codec.mjs";
 import { ZoneError, ZoneErrorCode } from "../../src/lib/errors.mjs";
 
@@ -149,6 +149,22 @@ describe("zone value validation", () => {
 	it("refuses an rrset claiming another zone", () => {
 		const rs = [rr("homelab.cldmv.net.", TYPE.NS, [NS("ns1.homelab.cldmv.net.")]), rr("gw.homelab.cldmv.net.", TYPE.A, [A("10.0.0.1")], { zone: "other.example." })];
 		expectRefusal(() => compileZone(homelabZone(), rs, null, { now: NOW }), ZoneErrorCode.BAD_OWNER);
+	});
+
+	it("refuses a malformed zone claim as BAD_OWNER — the wire failure underneath as cause, never a raw WireError", () => {
+		// The zone-claim check folds rr.zone through the seam; a name that does not parse must surface as the
+		// compiler's own BAD_OWNER (errors.mjs: nothing but a ZoneError escapes the public functions), with the
+		// codec refusal as cause.
+		const rs = [rr("homelab.cldmv.net.", TYPE.NS, [NS("ns1.homelab.cldmv.net.")]), rr("gw.homelab.cldmv.net.", TYPE.A, [A("10.0.0.1")], { zone: "not-absolute" })];
+		let err;
+		try {
+			compileZone(homelabZone(), rs, null, { now: NOW });
+		} catch (e) {
+			err = e;
+		}
+		expect(err, "expected a refusal, got a snapshot").toBeInstanceOf(ZoneError);
+		expect(err.code).toBe(ZoneErrorCode.BAD_OWNER);
+		expect(err.cause).toBeInstanceOf(WireError);
 	});
 
 	it("refuses a bad ttl", () => {
@@ -591,6 +607,24 @@ describe("fixture: homelab.cldmv.net", () => {
 		expect(tailnet["app.homelab.cldmv.net."].rrsets[TYPE.A].source).toBe("machines");
 		expect(tailnet["sub.homelab.cldmv.net."].delegation).toBe(true);
 		expect(tailnet["labs.homelab.cldmv.net."].ent).toBe(true);
+	});
+});
+
+describe("below — the zone-cut suffix test", () => {
+	it("matches label boundaries, not a raw string suffix", () => {
+		expect(below("x.b.example.", "b.example.")).toBe(true);
+		expect(below("b.example.", "b.example.")).toBe(false); // the cut itself is not below it
+		expect(below("x.a.example.", "b.example.")).toBe(false);
+	});
+
+	it("an escaped dot inside a label is label content — `a\\.b.example.` is NOT below the cut `b.example.`", () => {
+		// The label "a.b" ends where the cut's first label would begin, so a plain string suffix test calls the
+		// name "below" the cut and would wrongly mark the node glue (export.md's `router\.point` case).
+		expect(below("a\\.b.example.", "b.example.")).toBe(false);
+		expect(below("y.a\\.b.example.", "b.example.")).toBe(false);
+		expect(below("a\\.b.example.", "a\\.b.example.")).toBe(false); // the cut itself is not below it
+		expect(below("y.a\\.b.example.", "a\\.b.example.")).toBe(true);
+		expect(below("z.y.a\\.b.example.", "a\\.b.example.")).toBe(true);
 	});
 });
 
