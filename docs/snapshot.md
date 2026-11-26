@@ -39,7 +39,7 @@ Compilation is pure: no I/O, no rummage calls, no filesystem. One call, `compile
 }
 ```
 
-Per-type rrset entries appear under the rrset's type number as a decimal object key — `rrsets["1"]` is the A entry, `rrsets["2"]` NS, `rrsets["5"]` CNAME, `rrsets["12"]` PTR, and so on (the constants live in the codec's `TYPE`; an object key is necessarily the number's decimal string). Types are numeric end to end: the rrset value's `type` field is a non-negative integer ≤ 65535 straight from the codec's `parseRecord`, and mnemonics are presentation-only (`typeToString`). Node keys and the view map are plain frozen objects (not `Map`s) so snapshots stay JSON-dumpable for the history drawer.
+Per-type rrset entries appear under the rrset's type number as a decimal object key — `rrsets["1"]` is the A entry, `rrsets["2"]` NS, `rrsets["5"]` CNAME, `rrsets["12"]` PTR, and so on (the constants are the wire extension's `TYPE`, reached through the seam `src/lib/codec.mjs`; an object key is necessarily the number's decimal string). Types are numeric end to end: the rrset value's `type` field is a non-negative integer ≤ 65535 straight from the codec's `parseRecord`, and mnemonics are presentation-only (`typeToString`). Node keys and the view map are plain frozen objects (not `Map`s) so snapshots stay JSON-dumpable for the history drawer.
 
 ### Name keys
 
@@ -47,7 +47,7 @@ Node keys are lowercase absolute names: the codec's canonical form (`formatName(
 
 ### The SOA
 
-The SOA belongs to the zone value (`zone.soa`, one rdata value), never to an rrset: the compiler ignores any SOA-typed rrset on input and synthesizes the apex SOA from `zone.soa` — ttl `zone.defaultTtl` (or 3600), `records: [zone.soa]`, `source: "manual"`. The same frozen object is placed in `snapshot.soa` and in every view's apex node under `"SOA"`. `snapshot.serial` is the serial to serve; the server writes it into the SOA rdata's serial field when encoding answers — the rdata value in the snapshot keeps whatever serial it was parsed with.
+The SOA belongs to the zone value (`zone.soa`, one rdata value), never to an rrset: the compiler ignores any SOA-typed rrset on input and synthesizes the apex SOA from `zone.soa` — ttl `zone.defaultTtl` (or 3600), `records: [zone.soa]`, `source: "manual"`. The same frozen object is placed in `snapshot.soa` and in every view's apex node under the SOA type number (the same decimal-key rule as every rrset). `snapshot.serial` is the serial to serve; the server writes it into the SOA rdata's serial field when encoding answers — the rdata value in the snapshot keeps whatever serial it was parsed with.
 
 ## A worked example
 
@@ -65,14 +65,14 @@ const zone = {
 };
 
 const rrsets = [
-	{ zone: "homelab.cldmv.net.", name: "homelab.cldmv.net.", type: "NS", view: null, ttl: 86400, records: [{ ns: "ns1.homelab.cldmv.net." }, { ns: "ns2.homelab.cldmv.net." }], source: "manual" },
-	{ zone: "homelab.cldmv.net.", name: "gw.homelab.cldmv.net.", type: "A", view: null, ttl: null, records: [{ address: "10.0.0.1" }], source: "manual" },
-	{ zone: "homelab.cldmv.net.", name: "app.homelab.cldmv.net.", type: "A", view: "lan", ttl: 300, records: [{ address: "10.0.0.2" }], source: "manual", comment: "app box" },
-	{ zone: "homelab.cldmv.net.", name: "app.homelab.cldmv.net.", type: "A", view: null, ttl: null, records: [{ address: "10.0.0.9" }], source: "machines" },
-	{ zone: "homelab.cldmv.net.", name: "sub.homelab.cldmv.net.", type: "NS", view: null, ttl: 86400, records: [{ ns: "ns1.sub.homelab.cldmv.net." }], source: "manual" },
-	{ zone: "homelab.cldmv.net.", name: "ns1.sub.homelab.cldmv.net.", type: "A", view: null, ttl: 86400, records: [{ address: "10.0.0.53" }], source: "manual" },
-	{ zone: "homelab.cldmv.net.", name: "*.labs.homelab.cldmv.net.", type: "A", view: null, ttl: null, records: [{ address: "10.0.0.100" }], source: "manual" },
-	{ zone: "homelab.cldmv.net.", name: "deep.labs.homelab.cldmv.net.", type: "A", view: null, ttl: null, records: [{ address: "10.0.0.101" }], source: "manual" }
+	{ zone: "homelab.cldmv.net.", name: "homelab.cldmv.net.", type: 2, view: null, ttl: 86400, records: [{ ns: "ns1.homelab.cldmv.net." }, { ns: "ns2.homelab.cldmv.net." }], source: "manual" },
+	{ zone: "homelab.cldmv.net.", name: "gw.homelab.cldmv.net.", type: 1, view: null, ttl: null, records: [{ address: "10.0.0.1" }], source: "manual" },
+	{ zone: "homelab.cldmv.net.", name: "app.homelab.cldmv.net.", type: 1, view: "lan", ttl: 300, records: [{ address: "10.0.0.2" }], source: "manual", comment: "app box" },
+	{ zone: "homelab.cldmv.net.", name: "app.homelab.cldmv.net.", type: 1, view: null, ttl: null, records: [{ address: "10.0.0.9" }], source: "machines" },
+	{ zone: "homelab.cldmv.net.", name: "sub.homelab.cldmv.net.", type: 2, view: null, ttl: 86400, records: [{ ns: "ns1.sub.homelab.cldmv.net." }], source: "manual" },
+	{ zone: "homelab.cldmv.net.", name: "ns1.sub.homelab.cldmv.net.", type: 1, view: null, ttl: 86400, records: [{ address: "10.0.0.53" }], source: "manual" },
+	{ zone: "homelab.cldmv.net.", name: "*.labs.homelab.cldmv.net.", type: 1, view: null, ttl: null, records: [{ address: "10.0.0.100" }], source: "manual" },
+	{ zone: "homelab.cldmv.net.", name: "deep.labs.homelab.cldmv.net.", type: 1, view: null, ttl: null, records: [{ address: "10.0.0.101" }], source: "manual" }
 ];
 ```
 
@@ -102,7 +102,7 @@ Each view compiles independently. An rrset tagged `view: null` lands in EVERY vi
 
 ## Refusals
 
-Every refusal throws `ZoneError` (extends the codec's `WireError`, via `./codec.mjs`) carrying `code`, `message`, and `zone` / `owner` / `view` / `type` context. Codes:
+Every refusal throws `ZoneError` — the package's own error type (`src/lib/errors.mjs`), extending `Error` directly, NOT the wire's `WireError` — carrying `code`, `message`, and `zone` / `owner` / `view` / `type` context; a wire failure underneath a refusal arrives as the standard `cause`. Codes:
 
 | Code | Refuses |
 |---|---|
@@ -119,6 +119,8 @@ Every refusal throws `ZoneError` (extends the codec's `WireError`, via `./codec.
 | `CNAME_AT_APEX` | a CNAME at the zone apex |
 | `CNAME_COEXISTENCE` | a CNAME beside any other data for the same name in the same view |
 | `CNAME_MULTIPLE` | more than one CNAME record for the same name in the same view |
+
+One `ZoneError` code is not a content refusal: `WIRE_NOT_READY` is thrown when a call reaches the wire before the root leaf's `activate()` captured the wire surface (`setWire`, `src/lib/codec.mjs` — the test setup captures a fake).
 
 ### The wildcard rule
 
