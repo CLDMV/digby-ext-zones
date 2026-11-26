@@ -156,8 +156,17 @@ function validateRrset(zone, zoneLabels, zoneKey, hasViews, viewNames, rr, index
 	ctx.owner = rr.name;
 	ctx.type = rr.type;
 	if (!insideZone(labels, zoneLabels)) refuse(ZoneErrorCode.BAD_OWNER, `"${rr.name}" is not inside zone "${zone.name}"`, ctx);
-	if (rr.zone !== undefined && rr.zone !== null && foldKey(rr.zone) !== zoneKey) {
-		refuse(ZoneErrorCode.BAD_OWNER, `rrset for "${rr.name}" claims zone ${JSON.stringify(rr.zone)}, not "${zone.name}"`, ctx);
+	if (rr.zone !== undefined && rr.zone !== null) {
+		try {
+			if (foldKey(rr.zone) !== zoneKey) {
+				refuse(ZoneErrorCode.BAD_OWNER, `rrset for "${rr.name}" claims zone ${JSON.stringify(rr.zone)}, not "${zone.name}"`, ctx);
+			}
+		} catch (err) {
+			// A zone claim that does not parse is a caller shape error, mapped like every other owner-side refusal —
+			// the wire failure underneath as cause; a raw WireError never escapes the compiler (errors.mjs's contract).
+			if (err instanceof ZoneError) throw err;
+			refuse(ZoneErrorCode.BAD_OWNER, `rrset for "${rr.name}" claims zone ${JSON.stringify(rr.zone)}, which does not parse as an absolute name`, { ...ctx, cause: err });
+		}
 	}
 	checkWildcard(labels, rr.name, ctx);
 	if (!Number.isInteger(rr.type) || rr.type < 0 || rr.type > 0xffff) {
@@ -352,29 +361,55 @@ function foldKey(name) {
 }
 
 /**
- * Is `key` strictly below `cut`? Keys are dotted absolute names, so the test is a label-boundary suffix match: the cut
- * with a leading dot. (A root cut `.` matches everything, which is correct — everything is below the root.)
+ * Is `key` strictly below `cut`? Both are dotted absolute keys in the codec's canonical folded form, so the test is a
+ * LABEL-SEQUENCE suffix match — only the unescaped dots separate labels, because `\.` inside a label is label content
+ * (`a\.b.example.` is NOT below the cut `b.example.`, though the raw string ends with ".b.example."). A root cut `.`
+ * matches everything, which is correct — everything is below the root.
  * @param {string} key
  * @param {string} cut
  * @returns {boolean}
  */
-function below(key, cut) {
+export function below(key, cut) {
 	if (cut === ".") return key !== ".";
-	return key.length > cut.length && key.endsWith("." + cut);
+	const cutLabels = splitLabels(cut);
+	const keyLabels = splitLabels(key);
+	if (keyLabels.length <= cutLabels.length) return false;
+	return cutLabels.every((label, i) => keyLabels[keyLabels.length - cutLabels.length + i] === label);
 }
 
 /**
- * The parent of a dotted key (drop the first label). The root returns "". Escaped dots (`\.`) are label content, not
- * separators.
+ * Split a canonical dotted key into its labels. The trailing dot TERMINATES the last label — an absolute name's labels
+ * never end in an empty string, and the root key's single label is the empty string. Only unescaped dots separate
+ * labels; a `\X` escape (a literal dot in a label among them) is label content.
+ * @param {string} key
+ * @returns {string[]}
+ */
+function splitLabels(key) {
+	const labels = [];
+	let label = "";
+	for (let i = 0; i < key.length; i++) {
+		const ch = key[i];
+		if (ch === "\\") {
+			label += ch + (key[i + 1] ?? "");
+			i++;
+		} else if (ch === ".") {
+			labels.push(label);
+			label = "";
+		} else label += ch;
+	}
+	return labels;
+}
+
+/**
+ * The parent of a dotted key (drop the first label). The root returns "". Label boundaries are the unescaped dots —
+ * escaped dots (`\.`) are label content, not separators.
  * @param {string} key
  * @returns {string}
  */
 function parentOf(key) {
-	for (let i = 0; i < key.length; i++) {
-		if (key[i] === "\\") i++; // skip the escaped character
-		else if (key[i] === ".") return key.slice(i + 1);
-	}
-	return "";
+	const labels = splitLabels(key);
+	if (labels.length <= 1) return "";
+	return labels.slice(1).join(".") + "."; // re-terminate: the absolute form keeps its trailing dot
 }
 
 // ---------------------------------------------------------------------------
