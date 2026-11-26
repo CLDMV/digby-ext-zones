@@ -25,8 +25,7 @@ import importFile from "../../src/api/zones/import/file.mjs";
 import compile from "../../src/api/zones/compile.mjs";
 import exportSnapshot from "../../src/api/zones/export/snapshot.mjs";
 import exportZone from "../../src/api/zones/export/zone.mjs";
-import { TYPE } from "../../src/lib/codec.mjs";
-import { setWire } from "../../src/lib/codec.mjs";
+import { TYPE, setWire } from "../../src/lib/codec.mjs";
 import { ZoneErrorCode } from "../../src/lib/errors.mjs";
 import { fakeWire } from "../helpers/fake-wire.mjs";
 
@@ -92,6 +91,8 @@ describe("before activate — no captured surface", () => {
 		vi.resetModules();
 		const freshLeaf = (await import("../../src/api/zones/import/file.mjs")).default;
 		const freshCompile = (await import("../../src/api/zones/compile.mjs")).default;
+		const freshExportZone = (await import("../../src/api/zones/export/zone.mjs")).default;
+		const freshExportSnapshot = (await import("../../src/api/zones/export/snapshot.mjs")).default;
 		const { ZoneError: FreshZoneError, ZoneErrorCode: FreshZoneErrorCode } = await import("../../src/lib/errors.mjs");
 
 		let err;
@@ -106,6 +107,26 @@ describe("before activate — no captured surface", () => {
 		err = undefined;
 		try {
 			freshCompile(ZONE, RRSETS);
+		} catch (e) {
+			err = e;
+		}
+		expect(err).toBeInstanceOf(FreshZoneError);
+		expect(err.code).toBe(FreshZoneErrorCode.WIRE_NOT_READY);
+
+		err = undefined;
+		try {
+			freshExportZone(ZONE);
+		} catch (e) {
+			err = e;
+		}
+		expect(err).toBeInstanceOf(FreshZoneError);
+		expect(err.code).toBe(FreshZoneErrorCode.WIRE_NOT_READY);
+
+		err = undefined;
+		try {
+			// A snapshot-shaped value: the exporter checks the SOA and the view resolution before it reaches the
+			// seam, so the fixture carries both.
+			freshExportSnapshot({ zone: "example.", soa: { records: [SOA] }, views: { all: { nodes: {} } } });
 		} catch (e) {
 			err = e;
 		}
