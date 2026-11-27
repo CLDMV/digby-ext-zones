@@ -15,8 +15,8 @@
 /**
  * @fileoverview The one seam between digby-ext-zones and the DNS wire codec — and the ADAPTER onto the wire extension.
  *
- * No extension may import another composed extension's lib, so the wire codec (today in `digby-ext-server/src/lib/wire/`,
- * moving to its own extension package `@cldmv/digby-ext-wire`, CLDMV/digby#42) reaches this package only through a
+ * No extension may import another composed extension's lib, so the wire codec (its own extension package
+ * `@cldmv/digby-ext-wire` since CLDMV/digby#42) reaches this package only through a
  * captured surface: the root leaf's `activate()` reads `self.wire` and hands it to {@link setWire}, and every named
  * export below delegates to the matching `self.wire.*` leaf — read PER CALL, never at module-eval time, so a re-captured
  * surface takes effect immediately and nothing here holds an unbound `self` reference.
@@ -33,7 +33,7 @@
  *   TYPE / CLASS     -> self.wire.constants.TYPE / .CLASS
  *   WireError        -> self.wire.errors.WireError  WireErrorCode   -> self.wire.errors.codes
  *
- * (Leaf names are provisional until #42 builds the wire extension; this adapter is the single place to change them.
+ * (The leaf paths graduated from provisional to real when #42 built the wire extension; this adapter is the single place to change them.
  * The message codec and framer — decode/encode/encodeCapped/framer — are not part of zones' surface and are left out,
  * here and in the fake, on purpose.)
  *
