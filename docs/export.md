@@ -6,7 +6,7 @@
 
 A master file has no opinion about most of the record store: `kind`, `serialPolicy`, `disabled`, the view structure, rrset `source`, and per-zone metadata beyond the reader's shape are store concepts with no master-file form. `exportZone` carries the zone's `name`, `soa`, `defaultTtl` and the rrsets' names, types, TTLs, records and comments; `exportSnapshot` carries the view's records and the serial, and nothing else. A caller that round-trips through text keeps everything else in its own store.
 
-Rdata is rendered by the codec's `formatRdata`, which validates by encoding and re-decoding before formatting (CLDMV/digby#37) — so every record in the exported text is the canonical presentation of rdata that actually encodes, and a malformed shape surfaces as the codec's own `WireError`, untouched by the exporter. The exporter's own refusals (a view-tagged rrset, a zone without SOA rdata, a type that is not a number, an unresolved view, a disabled snapshot) are `ZoneError`s with the compiler's codes.
+Rdata is rendered by the codec's `formatRdata`, which validates by encoding and re-decoding before formatting (CLDMV/digby#37) — so every record in the exported text is the canonical presentation of rdata that actually encodes. A wire failure (an unparseable name, rdata the formatter refuses) is wrapped in the exporter's own `ZoneError` with the wire failure underneath as `cause` — the package's error contract (errors.mjs) holds everywhere. The exporter's own refusals (a view-tagged rrset, a zone without SOA rdata, a type that is not a number, an unresolved view, a disabled snapshot) are `ZoneError`s with the compiler's codes.
 
 ## Round-trip contract
 
@@ -60,6 +60,9 @@ Rdata names (CNAME targets, MX exchanges, SOA mname/rname, NS targets) always re
 | `exportZone` | `BAD_TTL` | an rrset's ttl is neither null/undefined nor a non-negative integer |
 | `exportSnapshot` | `BAD_ZONE` | the snapshot is disabled (no content to export), or the view is not named on a multi-view snapshot, or names a view the snapshot does not have |
 | `exportSnapshot` | `APEX_SOA_REQUIRED` | the snapshot carries no SOA rdata |
-| both | `WireError` (untouched) | an unparseable name (including a relative one — rrset names must be absolute), and any rdata the formatter refuses |
+| `exportZone` | `BAD_ZONE` (wire failure as `cause`) | the zone's name does not parse as an absolute name |
+| `exportZone` | `BAD_OWNER` (wire failure as `cause`) | an rrset's owner does not parse as an absolute name (including a relative one — rrset names must be absolute) |
+| `exportZone` / `exportSnapshot` | `BAD_RECORD` (wire failure as `cause`) | rdata the formatter refuses |
+| `exportSnapshot` | `BAD_ZONE` (wire failure as `cause`) | the snapshot's zone name or a node key does not parse as an absolute name |
 
-A zone name or owner that does not parse raises the codec's `WireError` directly (the exporter does not wrap codec refusals); everything the compiler accepted as a shape exports without a fuss.
+A wire failure is recognized with the seam's `isWireError` predicate (the wire's error class is not a leaf) and wrapped: the exported text only ever refuses with `ZoneError`, and the codec's own message rides along as `cause`. Everything the compiler accepted as a shape exports without a fuss.

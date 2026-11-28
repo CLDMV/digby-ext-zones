@@ -21,9 +21,9 @@
 
 import { describe, expect, it } from "vitest";
 import { compileZone } from "../../src/lib/compiler.mjs";
-import { TYPE, WireError } from "../../src/lib/codec.mjs";
-import { exportSnapshot, exportZone } from "../../src/lib/export.mjs";
+import { TYPE, isWireError } from "../../src/lib/codec.mjs";
 import { ZoneError, ZoneErrorCode } from "../../src/lib/errors.mjs";
+import { exportSnapshot, exportZone } from "../../src/lib/export.mjs";
 import { parseZoneFile } from "../../src/lib/reader.mjs";
 
 const enc = (s) => new TextEncoder().encode(s);
@@ -48,22 +48,6 @@ function zoneError(fn, code, ctx = {}) {
 	expect(err, "expected a ZoneError").toBeInstanceOf(ZoneError);
 	expect(err.code).toBe(code);
 	for (const [k, v] of Object.entries(ctx)) expect(err[k], `context ${k}`).toBe(v);
-	return err;
-}
-
-/**
- * Run `fn` and return the WireError it raises (failing the test when nothing, or something else, is thrown).
- * @param {() => unknown} fn
- * @returns {WireError}
- */
-function wireError(fn) {
-	let err;
-	try {
-		fn();
-	} catch (e) {
-		err = e;
-	}
-	expect(err, "expected a WireError").toBeInstanceOf(WireError);
 	return err;
 }
 
@@ -294,10 +278,11 @@ describe("exportZone refusals", () => {
 		zoneError(() => exportZone(HOMELAB_ZONE, [rr("a.x.test.", TYPE.A, [])]), ZoneErrorCode.BAD_RECORD);
 	});
 
-	it("surfaces the codec's WireError untouched for rdata its formatter refuses", () => {
-		const err = wireError(() => exportZone(HOMELAB_ZONE, [rr("a.x.test.", TYPE.A, [{ address: "not-an-ip" }])]));
-		expect(err.name).toBe("WireError"); // not a ZoneError — the codec's own refusal, undecorated
-		expect(err.message).toMatch(/not an IPv4 address/);
+	it("wraps a wire refusal of the rdata formatter in BAD_RECORD, the wire failure underneath as cause", () => {
+		const err = zoneError(() => exportZone(HOMELAB_ZONE, [rr("a.x.test.", TYPE.A, [{ address: "not-an-ip" }])]), ZoneErrorCode.BAD_RECORD, { owner: "a.x.test." });
+		expect(isWireError(err.cause)).toBe(true);
+		expect(err.cause.message).toMatch(/not an IPv4 address/);
+		expect(err.message).toMatch(/does not format/);
 	});
 });
 
