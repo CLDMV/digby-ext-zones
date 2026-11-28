@@ -21,21 +21,24 @@
  * export below delegates to the matching `self.wire.*` leaf — read PER CALL, never at module-eval time, so a re-captured
  * surface takes effect immediately and nothing here holds an unbound `self` reference.
  *
- * The leaf paths this module names (the ONE place in the package that does):
+ * The leaf paths this module names (the ONE place in the package that does) — the wire's landed surface (e835c9f):
  *
  *   parseRecord      -> self.wire.record.parse      formatRecord    -> self.wire.record.format
- *   parseName        -> self.wire.name.parse        formatName      -> self.wire.name.format
- *   canonicalName    -> self.wire.name.canonical    nameKey         -> self.wire.name.key
+ *   parseName        -> self.wire.domain.parse      formatName      -> self.wire.domain.format
+ *   canonicalName    -> self.wire.domain.canonical  nameKey         -> self.wire.domain.key
  *   parseTtl         -> self.wire.ttl.parse
  *   parseRdata       -> self.wire.rdata.parse       formatRdata     -> self.wire.rdata.format
  *   encodeRdataBytes -> self.wire.rdata.encode      decodeRdataBytes-> self.wire.rdata.decode
- *   typeToString     -> self.wire.type.name         classToString   -> self.wire.class.name
- *   TYPE / CLASS     -> self.wire.constants.TYPE / .CLASS
- *   WireError        -> self.wire.errors.WireError  WireErrorCode   -> self.wire.errors.codes
+ *   typeToString     -> self.wire.type.mnemonic     classToString   -> self.wire.class.mnemonic
+ *   TYPE / CLASS     -> self.wire.constants.type() / .class()  (zero-arg data leaves answering the frozen tables;
+ *                     the class leaf is file `class.mjs`, whose function is `klass` — `class` is a reserved word —
+ *                     re-exported as `class`)
+ *   isWireError      -> self.wire.errors.is(err)    WireErrorCode   -> self.wire.errors.codes()
  *
- * (The leaf paths graduated from provisional to real when #42 built the wire extension; this adapter is the single place to change them.
- * The message codec and framer — decode/encode/encodeCapped/framer — are not part of zones' surface and are left out,
- * here and in the fake, on purpose.)
+ * (The wire's error CLASS is not a leaf — it cannot be published, and `instanceof` across the composed boundary is
+ * false anyway — so nothing here constructs or tests one: a wire failure is recognized with the `errors.is` predicate,
+ * and zones' own refusals carry it as `cause`. The message codec and framer — decode/encode/encodeCapped/framer — are
+ * not part of zones' surface and are left out, here and in the fake, on purpose.)
  *
  * The committed suite runs against a shape-only fake of this surface (`tests/helpers/fake-wire.mjs`, captured by
  * `tests/setup-wire.mjs`); the parked reader/exporter suites in `tests/needs-wire/` run against the real codec once #42
@@ -52,23 +55,23 @@ let surface = null;
  * both change together with #42.
  */
 const REQUIRED = [
-	["constants.TYPE", "object"],
-	["constants.CLASS", "object"],
-	["errors.WireError", "function"],
-	["errors.codes", "object"],
+	["constants.type", "function"],
+	["constants.class", "function"],
+	["errors.is", "function"],
+	["errors.codes", "function"],
 	["record.parse", "function"],
 	["record.format", "function"],
-	["name.parse", "function"],
-	["name.format", "function"],
-	["name.canonical", "function"],
-	["name.key", "function"],
+	["domain.parse", "function"],
+	["domain.format", "function"],
+	["domain.canonical", "function"],
+	["domain.key", "function"],
 	["ttl.parse", "function"],
 	["rdata.parse", "function"],
 	["rdata.format", "function"],
 	["rdata.encode", "function"],
 	["rdata.decode", "function"],
-	["type.name", "function"],
-	["class.name", "function"]
+	["type.mnemonic", "function"],
+	["class.mnemonic", "function"]
 ];
 
 /**
@@ -132,18 +135,28 @@ function delegate(name, path) {
 }
 
 /**
- * A delegating namespace: reads the captured surface per property access, so constant tables and code enums always
- * reflect the surface that is captured NOW (forwarding traps so enumeration and `in` work too).
+ * The frozen table a zero-arg data leaf answers, read per call.
+ * @param {string} path - the `self.wire.*` leaf path of the zero-arg function
+ * @returns {object}
+ */
+function table(path) {
+	return at(path)();
+}
+
+/**
+ * A delegating namespace over a zero-arg data leaf: reads the captured surface per property access, so constant
+ * tables and code enums always reflect the surface that is captured NOW (forwarding traps so enumeration and `in`
+ * work too).
  * @param {string} path
  * @returns {object}
  */
 function liveNamespace(path) {
 	return new Proxy({}, {
-		get: (_target, key) => (typeof key === "symbol" ? undefined : Reflect.get(at(path), key)),
-		has: (_target, key) => Reflect.has(at(path), key),
-		ownKeys: () => Reflect.ownKeys(at(path)),
+		get: (_target, key) => (typeof key === "symbol" ? undefined : Reflect.get(table(path), key)),
+		has: (_target, key) => Reflect.has(table(path), key),
+		ownKeys: () => Reflect.ownKeys(table(path)),
 		getOwnPropertyDescriptor: (_target, key) => {
-			const desc = Reflect.getOwnPropertyDescriptor(at(path), key);
+			const desc = Reflect.getOwnPropertyDescriptor(table(path), key);
 			// The real tables are frozen; a reported non-configurable descriptor on an empty extensible target
 			// violates the proxy invariants — report it configurable so Object.keys/enumeration keep working.
 			return desc ? { ...desc, configurable: true } : undefined;
@@ -161,17 +174,17 @@ export const parseRecord = delegate("parseRecord", "record.parse");
 /** Format one record line — `self.wire.record.format`. */
 export const formatRecord = delegate("formatRecord", "record.format");
 
-/** Parse an absolute domain name into labels — `self.wire.name.parse`. */
-export const parseName = delegate("parseName", "name.parse");
+/** Parse an absolute domain name into labels — `self.wire.domain.parse`. */
+export const parseName = delegate("parseName", "domain.parse");
 
-/** Format parsed labels back to an absolute name — `self.wire.name.format`. */
-export const formatName = delegate("formatName", "name.format");
+/** Format parsed labels back to an absolute name — `self.wire.domain.format`. */
+export const formatName = delegate("formatName", "domain.format");
 
-/** Canonicalize a name against an origin — `self.wire.name.canonical`. */
-export const canonicalName = delegate("canonicalName", "name.canonical");
+/** Canonicalize a name against an origin — `self.wire.domain.canonical`. */
+export const canonicalName = delegate("canonicalName", "domain.canonical");
 
-/** The lookup key of a name (case-folded, escaped-normalized) — `self.wire.name.key`. */
-export const nameKey = delegate("nameKey", "name.key");
+/** The lookup key of a name (case-folded, escaped-normalized) — `self.wire.domain.key`. */
+export const nameKey = delegate("nameKey", "domain.key");
 
 /** Parse a TTL token — `self.wire.ttl.parse`. */
 export const parseTtl = delegate("parseTtl", "ttl.parse");
@@ -188,33 +201,24 @@ export const encodeRdataBytes = delegate("encodeRdataBytes", "rdata.encode");
 /** Decode wire bytes to one rdata value — `self.wire.rdata.decode`. */
 export const decodeRdataBytes = delegate("decodeRdataBytes", "rdata.decode");
 
-/** A type number's mnemonic — `self.wire.type.name`. */
-export const typeToString = delegate("typeToString", "type.name");
+/** A type number's mnemonic — `self.wire.type.mnemonic`. */
+export const typeToString = delegate("typeToString", "type.mnemonic");
 
-/** A class number's mnemonic — `self.wire.class.name`. */
-export const classToString = delegate("classToString", "class.name");
+/** A class number's mnemonic — `self.wire.class.mnemonic`. */
+export const classToString = delegate("classToString", "class.mnemonic");
 
-/** The wire's type-number table (RFC 1035 et al) — `self.wire.constants.TYPE`, read per property. */
-export const TYPE = liveNamespace("constants.TYPE");
+/** The wire's type-number table (RFC 1035 et al) — `self.wire.constants.type()`, read per property. */
+export const TYPE = liveNamespace("constants.type");
 
-/** The wire's class-number table — `self.wire.constants.CLASS`, read per property. */
-export const CLASS = liveNamespace("constants.CLASS");
+/** The wire's class-number table — `self.wire.constants.class()`, read per property. */
+export const CLASS = liveNamespace("constants.class");
 
 /**
- * The wire's error class — `self.wire.errors.WireError`, read per access: `new WireError(...)` constructs the wire's
- * class and `instanceof` checks against it resolve through the live `prototype`.
+ * Is this error one of the wire's? — `self.wire.errors.is(err)`, read per call. The wire's error class is not a leaf
+ * (it cannot be published, and `instanceof` is false across the composed boundary), so this predicate is the contract
+ * for recognizing a wire failure — the seam's refusals carry one underneath as `cause`.
  */
-export const WireError = new Proxy(class {}, {
-	construct: (_target, args) => Reflect.construct(at("errors.WireError"), args),
-	apply: (_target, thisArg, args) => Reflect.apply(at("errors.WireError"), thisArg, args),
-	get: (_target, key) => {
-		const real = at("errors.WireError");
-		if (key === "prototype") return real.prototype;
-		const value = Reflect.get(real, key, real);
-		return typeof value === "function" ? value.bind(real) : value;
-	},
-	has: (_target, key) => Reflect.has(at("errors.WireError"), key)
-});
+export const isWireError = delegate("isWireError", "errors.is");
 
-/** The wire's error-code table — `self.wire.errors.codes`, read per property. */
+/** The wire's error-code table — `self.wire.errors.codes()`, read per property. */
 export const WireErrorCode = liveNamespace("errors.codes");

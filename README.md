@@ -6,7 +6,7 @@ The project is in active pre-release development on the [`dev`](https://github.c
 
 ## The master-file reader
 
-`src/lib/reader.mjs` holds `parseZoneFile(text, { kind })`: a pure reader for RFC 1035 master-file (zone-file) syntax — a string in, values out, no I/O and no rummage calls. It splits the text into logical records (`src/lib/reader-lines.mjs`: parenthesised multi-line records, `;` comments, quoted strings and escapes at the record level), resolves the `$ORIGIN` and `$TTL` directives, and hands each record to the codec's presentation parser through the one seam in `src/lib/codec.mjs`. Every failure is a `WireError`, with the record's line appended to the codec's message.
+`src/lib/reader.mjs` holds `parseZoneFile(text, { kind })`: a pure reader for RFC 1035 master-file (zone-file) syntax — a string in, values out, no I/O and no rummage calls. It splits the text into logical records (`src/lib/reader-lines.mjs`: parenthesised multi-line records, `;` comments, quoted strings and escapes at the record level), resolves the `$ORIGIN` and `$TTL` directives, and hands each record to the codec's presentation parser through the one seam in `src/lib/codec.mjs`. Every failure is the package's own `ZoneError` (`BAD_PRESENTATION`), with the record's line appended to the codec's message and the wire failure underneath as `cause`.
 
 `$INCLUDE` is refused (the reader is pure and does not resolve files — the caller owns file resolution), `$GENERATE` is refused as unimplemented, and any other `$...` directive is refused as unknown. Records are not written to storage here; the zone compiler owns validation (CNAME exclusivity, apex NS, wildcards, record membership).
 

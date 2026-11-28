@@ -15,10 +15,11 @@
 /**
  * @fileoverview The zones package's one error type, in the wire's `WireError` style. Every refusal the compiler, the
  * reader-adjacent lib paths and the exporter report is a `ZoneError` with a stable `code`; nothing else escapes the
- * public functions. `ZoneError` extends `Error` directly — NOT the wire's `WireError` (reached only through the seam,
- * `./codec.mjs`, which nothing here may load): a wire failure underneath a zones refusal arrives as the standard
- * `cause`, so a caller can still tell the two apart with plain `instanceof`. The extra context fields (`zone`, `owner`,
- * `view`) say where the refusal came from.
+ * public functions. `ZoneError` extends `Error` directly — NOT the wire's `WireError` (the wire's error class is not a
+ * leaf — it cannot be published, and `instanceof` is false across the composed boundary): a wire failure underneath a
+ * zones refusal is recognized with the seam's `isWireError` predicate (`self.wire.errors.is`) and arrives as the
+ * standard `cause`, so a caller can still tell the two apart. The extra context fields (`zone`, `owner`, `view`) say
+ * where the refusal came from.
  */
 
 /**
@@ -44,6 +45,8 @@ export const ZoneErrorCode = Object.freeze({
 	CNAME_AT_APEX: "CNAME_AT_APEX", // a CNAME at the zone apex
 	CNAME_COEXISTENCE: "CNAME_COEXISTENCE", // a CNAME beside other data for the same name in the same view
 	CNAME_MULTIPLE: "CNAME_MULTIPLE", // more than one CNAME record for the same name in the same view
+	// Master file (the reader)
+	BAD_PRESENTATION: "BAD_PRESENTATION", // a master-file structural refusal — not a string, an unbalanced parenthesis, an unterminated quoted string, an unimplemented directive, or a record the codec's presentation parser refuses (the wire failure underneath as cause, the record's line appended)
 	// Wiring
 	WIRE_NOT_READY: "WIRE_NOT_READY" // a call reached the wire before activate() captured the surface (setWire not yet called)
 });

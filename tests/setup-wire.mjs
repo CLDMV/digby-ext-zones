@@ -19,7 +19,7 @@
  * `tests/needs-wire/`.
  */
 
-import { setWire } from "./src/lib/codec.mjs";
+import { setWire } from "../src/lib/codec.mjs";
 import { fakeWire } from "./helpers/fake-wire.mjs";
 
 setWire(fakeWire);

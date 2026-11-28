@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 import { below, compileZone, DEFAULT_TTL, IMPLICIT_VIEW } from "../../src/lib/compiler.mjs";
-import { TYPE, WireError } from "../../src/lib/codec.mjs";
+import { TYPE, isWireError } from "../../src/lib/codec.mjs";
 import { ZoneError, ZoneErrorCode } from "../../src/lib/errors.mjs";
 
 /** 2026-11-22, pinned for every `date` serial test. */
@@ -115,7 +115,7 @@ describe("zone value validation", () => {
 		}
 		expect(err).toBeInstanceOf(ZoneError);
 		expect(err.code).toBe(ZoneErrorCode.BAD_ZONE);
-		expect(err.cause).toBeInstanceOf(WireError);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
 	it("refuses an unknown kind", () => {
@@ -151,7 +151,7 @@ describe("zone value validation", () => {
 		expectRefusal(() => compileZone(homelabZone(), rs, null, { now: NOW }), ZoneErrorCode.BAD_OWNER);
 	});
 
-	it("refuses a malformed zone claim as BAD_OWNER — the wire failure underneath as cause, never a raw WireError", () => {
+	it("refuses a malformed zone claim as BAD_OWNER — the wire failure underneath as cause, never raw", () => {
 		// The zone-claim check folds rr.zone through the seam; a name that does not parse must surface as the
 		// compiler's own BAD_OWNER (errors.mjs: nothing but a ZoneError escapes the public functions), with the
 		// codec refusal as cause.
@@ -164,7 +164,7 @@ describe("zone value validation", () => {
 		}
 		expect(err, "expected a refusal, got a snapshot").toBeInstanceOf(ZoneError);
 		expect(err.code).toBe(ZoneErrorCode.BAD_OWNER);
-		expect(err.cause).toBeInstanceOf(WireError);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
 	it("refuses a bad ttl", () => {
@@ -488,6 +488,43 @@ describe("serial", () => {
 		expect(compileZone(zone, base, null, { now: NOW }).serial).toBe(1);
 		const first = compileZone(zone, base, null, { now: NOW });
 		expect(compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], first, { now: NOW }).serial).toBe(2);
+	});
+
+	it("the serial is a 32-bit space (RFC 1982): increment at 2^32-1 wraps to 0, not 2^32", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		const atTop = { serial: 4294967295, views: {} };
+		const snap = compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], atTop, { now: NOW });
+		expect(snap.serial).toBe(0);
+	});
+
+	it("increment one below the top does not wrap yet", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		const snap = compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], { serial: 4294967294, views: {} }, { now: NOW });
+		expect(snap.serial).toBe(4294967295);
+	});
+
+	it("unchanged content at the top of the space keeps the serial — no wrap without a bump", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		const first = compileZone(zone, base, null, { now: NOW });
+		// Same views as the previous snapshot, serial parked at the top of the space: unchanged content keeps it.
+		const atTop = { ...first, serial: 4294967295 };
+		const snap = compileZone(zone, base, atTop, { now: NOW });
+		expect(snap.serial).toBe(4294967295);
+	});
+
+	it("date policy: the monotonic guard's bump past 2^32-1 wraps to 0 too", () => {
+		// An increment-era serial larger than today's date form: the guard bumps prev + 1, which wraps.
+		const snap = compileZone(homelabZone(), [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], { serial: 4294967295, views: {} }, { now: NOW });
+		expect(snap.serial).toBe(0);
+	});
+
+	it("a serial is never emitted past 2^32-1", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		for (const previous of [0, 1, 4294967294, 4294967295]) {
+			const snap = compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], { serial: previous, views: {} }, { now: NOW });
+			expect(snap.serial).toBeGreaterThanOrEqual(0);
+			expect(snap.serial).toBeLessThanOrEqual(4294967295);
+		}
 	});
 
 	it("no bump when the content is unchanged", () => {

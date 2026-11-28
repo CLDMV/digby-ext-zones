@@ -19,12 +19,14 @@
  * meant to be read together.
  *
  * Every rdata value is rendered by the codec's `formatRdata`, which validates by encoding and re-decoding before
- * formatting (CLDMV/digby#37), so a malformed shape surfaces as the codec's own `WireError`, untouched — the exporter adds
- * no decoration of its own to codec refusals. Refusals that are the exporter's own judgment (a view tag, no SOA, a bad
- * type number) are `ZoneError`s with the compiler's codes.
+ * formatting (CLDMV/digby#37). A wire failure — a name that does not parse, rdata the formatter refuses — is wrapped in
+ * the exporter's own `ZoneError` with the wire failure underneath as `cause`: the package's error contract (errors.mjs)
+ * holds everywhere, and the seam's `isWireError` predicate is how the wire failure is recognized (the wire's error class
+ * is not a leaf). Refusals that are the exporter's own judgment (a view tag, no SOA, a bad type number) are `ZoneError`s
+ * with the compiler's codes.
  */
 
-import { TYPE, formatName, formatRdata, parseName, typeToString } from "./codec.mjs";
+import { TYPE, formatName, formatRdata, isWireError, parseName, typeToString } from "./codec.mjs";
 import { ZoneErrorCode, refuse } from "./errors.mjs";
 
 /**
@@ -43,14 +45,13 @@ import { ZoneErrorCode, refuse } from "./errors.mjs";
  * @param {object[]} [rrsets] - the zone's rrset values (view-null; a view tag is refused — per-view text is exportSnapshot's job)
  * @returns {string} the master file, with a trailing newline
  * @throws {import("./errors.mjs").ZoneError} BAD_ZONE / APEX_SOA_REQUIRED / BAD_VIEW / BAD_RECORD / BAD_TTL for the
- *   exporter's own refusals
- * @throws {import("./codec.mjs").WireError} the codec's own refusals, untouched: an unparseable zone or owner name, and
- *   any rdata the formatter refuses
+ *   exporter's own refusals; a wire failure underneath (an unparseable zone or owner name, rdata the formatter refuses)
+ *   arrives as `cause`
  */
 export function exportZone(zone, rrsets) {
 	if (!zone || typeof zone !== "object") refuse(ZoneErrorCode.BAD_ZONE, "a zone must be an object");
 	if (typeof zone.name !== "string" || zone.name.length === 0) refuse(ZoneErrorCode.BAD_ZONE, "a zone needs a name");
-	const originLabels = parseName(zone.name); // the codec's RELATIVE_NAME / BAD_PRESENTATION surfaces untouched
+	const originLabels = wireParseName(ZoneErrorCode.BAD_ZONE, `zone name "${zone.name}" does not parse as an absolute name`, { zone: zone.name }, zone.name);
 	if (!zone.soa || typeof zone.soa !== "object") {
 		refuse(ZoneErrorCode.APEX_SOA_REQUIRED, `zone "${zone.name}" carries no soa rdata`, { zone: zone.name });
 	}
@@ -58,12 +59,15 @@ export function exportZone(zone, rrsets) {
 	const def = defaultTtlOf(zone);
 	const lines = [`$ORIGIN ${zone.name}`];
 	if (typeof zone.defaultTtl === "number" && def !== zone.soa.minimum) lines.push(`$TTL ${def}`);
-	lines.push(`@ ${def} SOA ${formatRdata(TYPE.SOA, zone.soa)}`);
+	lines.push(`@ ${def} SOA ${wireFormatRdata(ZoneErrorCode.BAD_RECORD, "the zone's SOA rdata does not format", { zone: zone.name, type: TYPE.SOA }, TYPE.SOA, zone.soa)}`);
 
 	for (const rrset of Array.isArray(rrsets) ? rrsets : []) {
 		checkRrset(zone, rrset);
-		const owner = ownerForm(parseName(rrset.name), originLabels);
-		emitRrset(lines, owner, rrset.type, rrset.ttl, def, rrset.records, rrset.comment);
+		const owner = ownerForm(
+			wireParseName(ZoneErrorCode.BAD_OWNER, `rrset for "${rrset.name}" has an owner that does not parse as an absolute name`, { zone: zone.name, owner: rrset.name }, rrset.name),
+			originLabels
+		);
+		emitRrset(lines, owner, rrset.type, rrset.ttl, def, rrset.records, rrset.comment, { zone: zone.name });
 	}
 	return lines.join("\n") + "\n";
 }
@@ -85,8 +89,8 @@ export function exportZone(zone, rrsets) {
  * @param {{ view?: string }} [options] - which view to export; defaults to the snapshot's only view, or the implicit
  *   "all" view of a viewless zone; a multi-view snapshot must name one
  * @returns {string} the master file, with a trailing newline
- * @throws {import("./errors.mjs").ZoneError} BAD_ZONE for a disabled snapshot, a missing SOA, or an unresolved view
- * @throws {import("./codec.mjs").WireError} the codec's own refusals, untouched
+ * @throws {import("./errors.mjs").ZoneError} BAD_ZONE for a disabled snapshot, a missing SOA, an unresolved view, an
+ *   unparseable zone or node-key name, or rdata the formatter refuses (the wire failure underneath as `cause`)
  */
 export function exportSnapshot(snapshot, { view } = {}) {
 	if (!snapshot || typeof snapshot !== "object") refuse(ZoneErrorCode.BAD_ZONE, "a snapshot must be an object");
@@ -109,14 +113,14 @@ export function exportSnapshot(snapshot, { view } = {}) {
 		refuse(ZoneErrorCode.BAD_ZONE, `view "${view}" is not in the snapshot; its views are ${names.join(", ")}`, { zone: snapshot.zone, view: chosen });
 	}
 
-	const originLabels = parseName(snapshot.zone);
+	const originLabels = wireParseName(ZoneErrorCode.BAD_ZONE, `zone name "${snapshot.zone}" does not parse as an absolute name`, { zone: snapshot.zone }, snapshot.zone);
 	const nodes = views[chosen].nodes ?? {};
 	const def = snapshot.defaultTtl;
 	const lines = [`$ORIGIN ${snapshot.zone}`];
 	if (typeof def === "number" && def !== snapshot.soa.records[0].minimum) lines.push(`$TTL ${def}`);
 
 	// The apex SOA, with the snapshot's serial inlined over the rdata's own (stale) serial field.
-	lines.push(`@ ${def} SOA ${formatRdata(TYPE.SOA, { ...snapshot.soa.records[0], serial: snapshot.serial })}`);
+	lines.push(`@ ${def} SOA ${wireFormatRdata(ZoneErrorCode.BAD_RECORD, "the snapshot's SOA rdata does not format", { zone: snapshot.zone, type: TYPE.SOA }, TYPE.SOA, { ...snapshot.soa.records[0], serial: snapshot.serial })}`);
 
 	const apexKey = formatName(originLabels).toLowerCase(); // the compiler's foldKey, recomputed
 	const keys = Object.keys(nodes).sort();
@@ -127,7 +131,7 @@ export function exportSnapshot(snapshot, { view } = {}) {
 	for (const type of apexTypes) {
 		if (type === TYPE.SOA) continue; // emitted above, with the inlined serial
 		const rrset = nodes[apexKey].rrsets[type];
-		emitRrset(lines, "@", type, rrset.ttl, def, rrset.records, rrset.comment);
+		emitRrset(lines, "@", type, rrset.ttl, def, rrset.records, rrset.comment, { zone: snapshot.zone });
 	}
 	for (const key of keys) {
 		if (key === apexKey) continue;
@@ -135,9 +139,10 @@ export function exportSnapshot(snapshot, { view } = {}) {
 		const types = Object.keys(node.rrsets ?? {})
 			.map(Number)
 			.sort((a, b) => a - b);
+		const ownerLabels = wireParseName(ZoneErrorCode.BAD_ZONE, `snapshot node key "${key}" does not parse as an absolute name`, { zone: snapshot.zone }, key);
 		for (const type of types) {
 			const rrset = node.rrsets[type];
-			emitRrset(lines, ownerForm(parseName(key), originLabels), type, rrset.ttl, def, rrset.records, rrset.comment);
+			emitRrset(lines, ownerForm(ownerLabels, originLabels), type, rrset.ttl, def, rrset.records, rrset.comment, { zone: snapshot.zone });
 		}
 	}
 	return lines.join("\n") + "\n";
@@ -191,14 +196,52 @@ function checkRrset(zone, rrset) {
  * @param {number} def - the effective TTL default
  * @param {object[]} records
  * @param {string|null} comment
+ * @param {{ zone?: string }} ctx - the zone context for a wrapped wire refusal
  */
-function emitRrset(lines, owner, type, ttl, def, records, comment) {
+function emitRrset(lines, owner, type, ttl, def, records, comment, ctx = {}) {
 	const ttlToken = ttl === def || ttl === undefined || ttl === null ? "" : ` ${ttl}`;
 	const mnemonic = typeToString(type);
 	records.forEach((data, i) => {
 		const note = i === 0 && comment ? ` ; ${comment}` : "";
-		lines.push(`${owner}${ttlToken} ${mnemonic} ${formatRdata(type, data)}${note}`);
+		const rdata = wireFormatRdata(ZoneErrorCode.BAD_RECORD, `rdata for "${owner} ${mnemonic}" does not format`, { ...ctx, owner, type }, type, data);
+		lines.push(`${owner}${ttlToken} ${mnemonic} ${rdata}${note}`);
 	});
+}
+
+/**
+ * Parse a name for the exporter, wrapping a wire refusal in the exporter's own (the wire failure underneath as
+ * `cause`). A ZoneError of this package's own passes through untouched, and so does anything else — a bug escapes as-is.
+ * @param {string} code - the {@link ZoneErrorCode} the refusal carries
+ * @param {string} message
+ * @param {{ zone?: string, owner?: string, view?: string|null, type?: number }} ctx
+ * @param {string} name
+ * @returns {Uint8Array[]}
+ */
+function wireParseName(code, message, ctx, name) {
+	try {
+		return parseName(name);
+	} catch (err) {
+		if (isWireError(err)) refuse(code, message, { ...ctx, cause: err });
+		throw err;
+	}
+}
+
+/**
+ * Format rdata for the exporter, with the same wire-refusal guard as {@link wireParseName}.
+ * @param {string} code
+ * @param {string} message
+ * @param {{ zone?: string, owner?: string, view?: string|null, type?: number }} ctx
+ * @param {number} type
+ * @param {object} data
+ * @returns {string}
+ */
+function wireFormatRdata(code, message, ctx, type, data) {
+	try {
+		return formatRdata(type, data);
+	} catch (err) {
+		if (isWireError(err)) refuse(code, message, { ...ctx, cause: err });
+		throw err;
+	}
 }
 
 /**

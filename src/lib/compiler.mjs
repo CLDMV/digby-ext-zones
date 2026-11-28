@@ -206,8 +206,9 @@ function isTtl(ttl) {
 /**
  * The wildcard rule: a `*` may appear only as the sole character of the owner's FIRST label (a normal `*.example.` style
  * wildcard one or more labels below the apex); a `*` in any other label, or inside a label (`ab*d`), is refused. The apex
- * itself can never carry the `*` (it is a different name), so no separate apex check is needed. A backslash-escaped octet
- * is never a wildcard, whatever it escapes.
+ * itself can never carry the `*` (it is a different name), so no separate apex check is needed. Escapes do NOT exempt a
+ * star: the parser decodes presentation escapes before labels reach this check, so `\*` and `\052` arrive as the byte
+ * 0x2a like any other star — inside a label it is refused, and as the sole character of the first label it IS the wildcard.
  * @param {Uint8Array[]} labels
  * @param {string} name - for the message only
  * @param {{ zone: string, view: string|null }} ctx
@@ -430,11 +431,14 @@ function nextSerial(zone, views, previous, now) {
 	if (!contentChanged(views, previous) && prev !== null) return prev;
 
 	const policy = zone.serialPolicy ?? "date";
-	if (policy === "increment") return (prev ?? 0) + 1; // +1, never below the previous by construction
+	// +1 in the 32-bit space: at the top of the range the increment wraps to 0 — the RFC 1982 rollover, not a regression.
+	if (policy === "increment") return wrapSerial((prev ?? 0) + 1);
 
 	// date: YYYYMMDDNN (RFC 1912). Same calendar day as the previous serial -> NN+1; NN saturating at 99 rolls to the
 	// next day at 01. Anything else starts the day at 01. Monotonic guard last: a candidate at or below the previous
-	// serial (a clock stepped back, or an increment-era serial larger than today's date form) becomes prev + 1.
+	// serial (a clock stepped back, or an increment-era serial larger than today's date form) becomes prev + 1. The
+	// serial is a 32-bit space (RFC 1982), so every path wraps through wrapSerial — a serial past 2^32-1 rolls to 0 and
+	// is never emitted past the space.
 	const day = now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate();
 	let candidate;
 	if (prev !== null && Math.floor(prev / 100) === day) {
@@ -443,7 +447,18 @@ function nextSerial(zone, views, previous, now) {
 		candidate = day * 100 + 1;
 	}
 	if (prev !== null && candidate <= prev) candidate = prev + 1;
-	return candidate;
+	return wrapSerial(candidate);
+}
+
+/**
+ * Wrap a candidate serial into the 32-bit space the DNS protocol carries (RFC 1982 serial arithmetic): a serial past
+ * 2^32-1 rolls to 0. The single place the wrap applies — the increment path and the date path's day and monotonic
+ * guard all produce plain candidates, and this closes each of them into [0, 2^32-1].
+ * @param {number} candidate
+ * @returns {number} the serial, in [0, 2^32-1]
+ */
+function wrapSerial(candidate) {
+	return ((candidate % 0x100000000) + 0x100000000) % 0x100000000;
 }
 
 /**
@@ -554,13 +569,16 @@ function baseSerial(policy, now) {
 }
 
 /**
- * Freeze a value deeply (plain objects and arrays; typed arrays cannot hold a freeze — noted in docs/snapshot.md).
+ * Freeze a value deeply (plain objects and arrays). An ArrayBuffer view (a Uint8Array rdata value, most often) is
+ * SKIPPED, not frozen: `Object.freeze` on a typed array with elements throws ("Cannot freeze array buffer views with
+ * elements"), so freezing one would refuse every zone carrying TXT, DS, SSHFP or generic `\#` rdata. The bytes stay
+ * unfrozen and read-only by convention — noted in docs/snapshot.md.
  * @template T
  * @param {T} v
  * @returns {T}
  */
 export function deepFreeze(v) {
-	if (v !== null && typeof v === "object") {
+	if (v !== null && typeof v === "object" && !ArrayBuffer.isView(v)) {
 		for (const k of Object.keys(v)) deepFreeze(v[k]);
 		Object.freeze(v);
 	}

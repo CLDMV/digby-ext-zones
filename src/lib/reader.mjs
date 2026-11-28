@@ -20,7 +20,8 @@
  * is pure, so file resolution is the caller's decision, and generation is unimplemented.
  */
 
-import { CLASS, TYPE, WireError, WireErrorCode, canonicalName, nameKey, parseRecord, parseTtl } from "./codec.mjs";
+import { CLASS, TYPE, canonicalName, isWireError, nameKey, parseRecord, parseTtl } from "./codec.mjs";
+import { ZoneErrorCode, refuse } from "./errors.mjs";
 import { splitRecords } from "./reader-lines.mjs";
 
 /**
@@ -42,7 +43,9 @@ import { splitRecords } from "./reader-lines.mjs";
  * @property {null} view - always null (all views); views are not a master-file concept
  * @property {number} ttl - the group's first record's TTL
  * @property {object[]} records - the parsed rdata values, in file order
- * @property {string|null} comment - the trailing `;` comment of the record line that opened the group
+ * @property {string|null} comment - the trailing `;` comment of the group's first record — read from that record's LAST
+ *   physical line, where a trailing comment naturally sits (identical to the opening line for the common single-line
+ *   record; see the `comment` field of `MasterRecord` in reader-lines.mjs)
  * @property {"manual"} source
  */
 
@@ -59,8 +62,9 @@ import { splitRecords } from "./reader-lines.mjs";
  * @param {string} text - the master file
  * @param {{ kind?: string }} [options]
  * @returns {{ zone: ZoneValue, rrsets: RrsetValue[] }}
- * @throws {import("./codec.mjs").WireError} every failure is a WireError: the codec's own presentation errors with the
- *   record's line appended, or a reader error naming the line for directives, class and grouping-level problems
+ * @throws {import("./errors.mjs").ZoneError} BAD_PRESENTATION for every refusal: the reader's own (directives, class,
+ *   grouping-level problems) or a codec parse failure, re-raised with the record's line appended and the wire failure
+ *   underneath as `cause`
  */
 export function parseZoneFile(text, { kind = "primary" } = {}) {
 	const records = splitRecords(text);
@@ -141,17 +145,20 @@ export function parseZoneFile(text, { kind = "primary" } = {}) {
 }
 
 /**
- * A reader error carrying the record's line.
+ * A reader refusal carrying the record's line.
  * @param {string} message
- * @returns {WireError}
+ * @returns {never}
  */
 function bad(message) {
-	return new WireError(WireErrorCode.BAD_PRESENTATION, message);
+	return refuse(ZoneErrorCode.BAD_PRESENTATION, message);
 }
 
 /**
- * Run a codec parse, and re-raise its WireError with the record's line appended so a master-file error names where it
- * happened. Only WireErrors are decorated; anything else is a bug and escapes as-is.
+ * Run a codec parse, and re-raise its failure with the record's line appended so a master-file error names where it
+ * happened. The wire's error class is not a leaf, so a wire failure is recognized with the `errors.is` predicate and
+ * re-raised as the reader's own ZoneError BAD_PRESENTATION — the codec's message with the line appended, the wire
+ * failure underneath as `cause`. A ZoneError of the reader's own passes through untouched, and anything else is a bug
+ * and escapes as-is.
  * @template T
  * @param {() => T} run
  * @param {number} line
@@ -161,7 +168,7 @@ function withLine(run, line) {
 	try {
 		return run();
 	} catch (err) {
-		if (!(err instanceof WireError)) throw err;
-		throw new WireError(err.code, `${err.message} (master file line ${line})`, err.offset);
+		if (!isWireError(err)) throw err;
+		refuse(ZoneErrorCode.BAD_PRESENTATION, `${err.message} (master file line ${line})`, { cause: err });
 	}
 }

@@ -166,7 +166,7 @@ First compile (no previous snapshot): `date` → today at `01`, `increment` → 
 The snapshot is deep-frozen: every object and array (nodes, rrsets, records arrays, rdata values) is `Object.freeze`d, shared across views where the value is shared (the apex SOA is one frozen object in every view). Two caveats:
 
 - Compiling freezes the caller's rdata values too — they become part of the snapshot. Reusing the same parsed values across recompiles is fine (freezing is idempotent); mutating them afterwards is not.
-- `Uint8Array` rdata (TXT character-strings and the like) cannot be element-frozen — `Object.freeze` on a typed array is a no-op. The arrays' identity is still shared, not copied; treat them as read-only by convention, as the codec already does.
+- `Uint8Array` rdata (TXT character-strings and the like) is left UNFROZEN — `Object.freeze` on a typed array with elements throws ("Cannot freeze array buffer views with elements"), so the deep freeze skips array-buffer views rather than refusing every zone that carries TXT, DS, SSHFP or generic `\#` rdata. The arrays' identity is still shared, not copied; treat them as read-only by convention, as the codec already does.
 
 ## Reverse zones
 

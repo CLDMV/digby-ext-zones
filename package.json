@@ -29,6 +29,7 @@
 		"generate": "rummage generate",
 		"generate:check": "rummage check"
 	},
+	"dependencies": { "@cldmv/digby-ext-wire": "workspace:*" },
 	"peerDependencies": { "@cldmv/rummage": "^0.1.0" },
 	"devDependencies": {
 		"@cldmv/rummage": "workspace:*",
