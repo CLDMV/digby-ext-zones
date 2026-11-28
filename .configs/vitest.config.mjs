@@ -25,7 +25,9 @@ export default defineConfig({
 		testTimeout: 30000,
 		reporters: ["dot"],
 		coverage: {
-			provider: "v8",
+			provider: "custom",
+			// The v8 provider, with the query slothlet puts on composed leaves stripped from their coverage keys (see the file).
+			customProviderModule: path.resolve(root, ".configs/coverage-provider.mjs"),
 			include: ["src/**"],
 			exclude: ["**/*.json"],
 			reporter: ["text", "html", "json-summary", "json"]
