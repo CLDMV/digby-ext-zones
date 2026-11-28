@@ -23,4 +23,8 @@ describe("rummage.manifest.mjs", () => {
 			expect(pkg.dependencies ?? {}, `manifest requires '${name}', which package.json 'dependencies' does not declare — the link left in node_modules hides it until a fresh install`).toHaveProperty(name);
 		}
 	});
+
+	it("publishes exactly the four peer-callable leaves — the list the compose suite's peer calls exercise", () => {
+		expect(manifest.public).toEqual(["import.file", "compile", "export.zone", "export.snapshot"]);
+	});
 });
