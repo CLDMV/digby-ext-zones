@@ -24,7 +24,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	CLASS,
 	TYPE,
-	WireError,
 	WireErrorCode,
 	canonicalName,
 	classToString,
@@ -33,6 +32,7 @@ import {
 	formatName,
 	formatRdata,
 	formatRecord,
+	isWireError,
 	nameKey,
 	parseName,
 	parseRdata,
@@ -69,25 +69,25 @@ describe("delegation — every named export routes to its self.wire.* leaf", () 
 		expect(lastCall()).toEqual({ leaf: "record.format", args: [fakeTYPE.A, { address: "10.0.0.1" }] });
 	});
 
-	it("parseName -> wire.name.parse, labels back as bytes", () => {
+	it("parseName -> wire.domain.parse, labels back as bytes", () => {
 		const labels = parseName("app.example.");
-		expect(lastCall()).toEqual({ leaf: "name.parse", args: ["app.example."] });
+		expect(lastCall()).toEqual({ leaf: "domain.parse", args: ["app.example."] });
 		expect(labels.map((label) => decoder.decode(label))).toEqual(["app", "example"]);
 	});
 
 	it("formatName -> wire.name.format", () => {
 		expect(formatName(parseName("a.b."))).toBe("a.b.");
-		expect(lastCall()).toEqual({ leaf: "name.format", args: [parseName("a.b.")] });
+		expect(lastCall()).toEqual({ leaf: "domain.format", args: [parseName("a.b.")] });
 	});
 
-	it("canonicalName -> wire.name.canonical, origin passed through", () => {
+	it("canonicalName -> wire.domain.canonical, origin passed through", () => {
 		expect(canonicalName("www", "example.")).toBe("www"); // the fake canonicalizes nothing
-		expect(lastCall()).toEqual({ leaf: "name.canonical", args: ["www", "example."] });
+		expect(lastCall()).toEqual({ leaf: "domain.canonical", args: ["www", "example."] });
 	});
 
-	it("nameKey -> wire.name.key, case folded", () => {
+	it("nameKey -> wire.domain.key, case folded", () => {
 		expect(nameKey("APP.Example.")).toBe("app.example.");
-		expect(lastCall()).toEqual({ leaf: "name.key", args: ["APP.Example."] });
+		expect(lastCall()).toEqual({ leaf: "domain.key", args: ["APP.Example."] });
 	});
 
 	it("parseTtl -> wire.ttl.parse", () => {
@@ -115,21 +115,21 @@ describe("delegation — every named export routes to its self.wire.* leaf", () 
 		expect(lastCall()).toEqual({ leaf: "rdata.decode", args: [fakeTYPE.AAAA, new Uint8Array([1])] });
 	});
 
-	it("typeToString -> wire.type.name (a leaf is never named toString)", () => {
+	it("typeToString -> wire.type.mnemonic (a leaf is never named toString)", () => {
 		expect(typeToString(fakeTYPE.CNAME)).toBe("CNAME");
 		expect(typeToString(999)).toBe("TYPE999");
-		expect(lastCall()).toEqual({ leaf: "type.name", args: [999] });
+		expect(lastCall()).toEqual({ leaf: "type.mnemonic", args: [999] });
 	});
 
-	it("classToString -> wire.class.name", () => {
+	it("classToString -> wire.class.mnemonic", () => {
 		expect(classToString(fakeCLASS.IN)).toBe("IN");
 		expect(classToString(255)).toBe("CLASS255");
-		expect(lastCall()).toEqual({ leaf: "class.name", args: [255] });
+		expect(lastCall()).toEqual({ leaf: "class.mnemonic", args: [255] });
 	});
 });
 
-describe("constants — per-property reads on the captured surface", () => {
-	it("TYPE and CLASS resolve to the wire's tables", () => {
+describe("constants — zero-arg data leaves, read per property on the captured surface", () => {
+	it("TYPE and CLASS resolve to the tables the data leaves answer", () => {
 		expect(TYPE.A).toBe(fakeTYPE.A);
 		expect(TYPE.CNAME).toBe(fakeTYPE.CNAME);
 		expect(CLASS.IN).toBe(fakeCLASS.IN);
@@ -137,28 +137,31 @@ describe("constants — per-property reads on the captured surface", () => {
 	});
 
 	it("resolves per property read: a re-captured surface is reflected immediately (never module-eval time)", () => {
-		const variant = { ...fakeWire, constants: { TYPE: { ...fakeTYPE, A: 777 }, CLASS: fakeCLASS } };
+		const variant = { ...fakeWire, constants: { type: () => ({ ...fakeTYPE, A: 777 }), class: () => fakeCLASS } };
 		setWire(variant);
 		expect(TYPE.A).toBe(777);
 		expect(parseTtl("1")).toBe(1); // the other leaves still route through the (shared) stubs
 	});
 });
 
-describe("errors — the wire's error class and codes", () => {
-	it("WireError constructs the wire's error class", () => {
-		const err = new WireError(fakeCodes.BAD_RDATA, "boom", 7);
-		expect(err).toBeInstanceOf(FakeWireError);
+describe("errors — the is predicate (the class is not a leaf) and the code table", () => {
+	it("isWireError routes to wire.errors.is, the argument passed through", () => {
+		const wire = new FakeWireError(fakeCodes.BAD_RDATA, "boom", 7);
+		expect(isWireError(wire)).toBe(true);
+		expect(lastCall()).toEqual({ leaf: "errors.is", args: [wire] });
+		expect(isWireError(new ZoneError(ZoneErrorCode.BAD_ZONE, "no"))).toBe(false);
+	});
+
+	it("a fake wire error is not a ZoneError — the types stay distinct across the boundary", () => {
+		const err = new FakeWireError(fakeCodes.BAD_RDATA, "boom", 7);
+		expect(err).toBeInstanceOf(Error);
 		expect(err).not.toBeInstanceOf(ZoneError);
 		expect(err.code).toBe(fakeCodes.BAD_RDATA);
 		expect(err.message).toBe("boom");
 		expect(err.offset).toBe(7);
 	});
 
-	it("a wire error instance is an instance of the seam's WireError", () => {
-		expect(new FakeWireError(fakeCodes.BAD_PRESENTATION, "x")).toBeInstanceOf(WireError);
-	});
-
-	it("WireErrorCode resolves to the wire's code table", () => {
+	it("WireErrorCode resolves to the table the errors.codes() leaf answers", () => {
 		expect(WireErrorCode.BAD_PRESENTATION).toBe(fakeCodes.BAD_PRESENTATION);
 		expect(Object.keys(WireErrorCode)).toEqual(Object.keys(fakeCodes));
 	});
@@ -176,9 +179,9 @@ describe("setWire — fail fast on a wrong-shaped surface", () => {
 	});
 
 	it("refuses a surface missing a whole subtree", () => {
-		const broken = { ...fakeWire, name: undefined };
+		const broken = { ...fakeWire, domain: undefined };
 		expect(() => setWire(broken)).toThrowError(TypeError);
-		expect(() => setWire(broken)).toThrowError(/name\.parse/);
+		expect(() => setWire(broken)).toThrowError(/domain\.parse/);
 	});
 
 	it("refuses a non-function where a function is expected", () => {

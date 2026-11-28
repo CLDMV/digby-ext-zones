@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 import { below, compileZone, DEFAULT_TTL, IMPLICIT_VIEW } from "../../src/lib/compiler.mjs";
-import { TYPE, WireError } from "../../src/lib/codec.mjs";
+import { TYPE, isWireError } from "../../src/lib/codec.mjs";
 import { ZoneError, ZoneErrorCode } from "../../src/lib/errors.mjs";
 
 /** 2026-11-22, pinned for every `date` serial test. */
@@ -115,7 +115,7 @@ describe("zone value validation", () => {
 		}
 		expect(err).toBeInstanceOf(ZoneError);
 		expect(err.code).toBe(ZoneErrorCode.BAD_ZONE);
-		expect(err.cause).toBeInstanceOf(WireError);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
 	it("refuses an unknown kind", () => {
@@ -151,7 +151,7 @@ describe("zone value validation", () => {
 		expectRefusal(() => compileZone(homelabZone(), rs, null, { now: NOW }), ZoneErrorCode.BAD_OWNER);
 	});
 
-	it("refuses a malformed zone claim as BAD_OWNER — the wire failure underneath as cause, never a raw WireError", () => {
+	it("refuses a malformed zone claim as BAD_OWNER — the wire failure underneath as cause, never raw", () => {
 		// The zone-claim check folds rr.zone through the seam; a name that does not parse must surface as the
 		// compiler's own BAD_OWNER (errors.mjs: nothing but a ZoneError escapes the public functions), with the
 		// codec refusal as cause.
@@ -164,7 +164,7 @@ describe("zone value validation", () => {
 		}
 		expect(err, "expected a refusal, got a snapshot").toBeInstanceOf(ZoneError);
 		expect(err.code).toBe(ZoneErrorCode.BAD_OWNER);
-		expect(err.cause).toBeInstanceOf(WireError);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
 	it("refuses a bad ttl", () => {

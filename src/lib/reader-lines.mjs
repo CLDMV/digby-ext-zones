@@ -19,7 +19,7 @@
  * tokenizer's job, and the record text is handed to it unmodified.
  */
 
-import { WireError, WireErrorCode } from "./codec.mjs";
+import { ZoneErrorCode, refuse } from "./errors.mjs";
 
 /**
  * One logical record of a master file.
@@ -84,11 +84,11 @@ function scanLine(line, state) {
  *
  * @param {string} text
  * @returns {MasterRecord[]}
- * @throws {import("./codec.mjs").WireError} BAD_PRESENTATION for a stray `)`, an unterminated quoted string or an
+ * @throws {import("./errors.mjs").ZoneError} BAD_PRESENTATION for a stray `)`, an unterminated quoted string or an
  *   unclosed `(` at end of file, each with the line it starts on
  */
 export function splitRecords(text) {
-	if (typeof text !== "string") throw new WireError(WireErrorCode.BAD_PRESENTATION, "the master file must be a string");
+	if (typeof text !== "string") refuse(ZoneErrorCode.BAD_PRESENTATION, "the master file must be a string");
 	const records = [];
 	const lines = text.split(/\r\n|\r|\n/);
 	const state = { depth: 0, inQuote: false };
@@ -98,7 +98,7 @@ export function splitRecords(text) {
 		const line = lines[n];
 		const at = n + 1;
 		const scanned = scanLine(line, state);
-		if (scanned.depth < 0) throw new WireError(WireErrorCode.BAD_PRESENTATION, `line ${at}: unbalanced ')'`);
+		if (scanned.depth < 0) refuse(ZoneErrorCode.BAD_PRESENTATION, `line ${at}: unbalanced ')'`);
 
 		if (state.depth === 0 && !state.inQuote) {
 			// a new logical record may start on this line
@@ -135,8 +135,8 @@ export function splitRecords(text) {
 	}
 
 	if (cur !== null) {
-		if (state.inQuote) throw new WireError(WireErrorCode.BAD_PRESENTATION, `line ${cur.line}: an unterminated quoted string`);
-		throw new WireError(WireErrorCode.BAD_PRESENTATION, `line ${cur.line}: unbalanced '(' — the record is never closed`);
+		if (state.inQuote) refuse(ZoneErrorCode.BAD_PRESENTATION, `line ${cur.line}: an unterminated quoted string`);
+		refuse(ZoneErrorCode.BAD_PRESENTATION, `line ${cur.line}: unbalanced '(' — the record is never closed`);
 	}
 	return records;
 }

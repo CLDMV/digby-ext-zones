@@ -20,23 +20,26 @@
 
 import { describe, expect, it } from "vitest";
 import { parseZoneFile } from "../../src/lib/reader.mjs";
-import { TYPE, WireError, WireErrorCode } from "../../src/lib/codec.mjs";
+import { TYPE, isWireError } from "../../src/lib/codec.mjs";
+import { ZoneError, ZoneErrorCode } from "../../src/lib/errors.mjs";
 
 const enc = (s) => new TextEncoder().encode(s);
 
 /**
- * Run `fn` and return the WireError it raises (failing the test when nothing, or something else, is thrown).
+ * Run `fn` and return the reader's ZoneError it raises (failing the test when nothing, or something else, is thrown).
+ * Every reader refusal is a ZoneError BAD_PRESENTATION; a wire failure underneath arrives as `cause`.
  * @param {() => unknown} fn
- * @returns {WireError}
+ * @returns {ZoneError}
  */
-function wireError(fn) {
+function zoneError(fn) {
 	let err;
 	try {
 		fn();
 	} catch (e) {
 		err = e;
 	}
-	expect(err, "expected a WireError").toBeInstanceOf(WireError);
+	expect(err, "expected a ZoneError").toBeInstanceOf(ZoneError);
+	expect(err.code).toBe(ZoneErrorCode.BAD_PRESENTATION);
 	return err;
 }
 
@@ -87,20 +90,18 @@ describe("directives", () => {
 	});
 
 	it("refuses $INCLUDE — the reader is pure, the caller resolves files", () => {
-		const err = wireError(() => parseZoneFile("$INCLUDE /etc/digby/other.zone"));
-		expect(err.code).toBe(WireErrorCode.BAD_PRESENTATION);
+		const err = zoneError(() => parseZoneFile("$INCLUDE /etc/digby/other.zone"));
 		expect(err.message).toMatch(/\$INCLUDE/);
 		expect(err.message).toMatch(/pure|resolve/);
 	});
 
 	it("refuses $GENERATE as unimplemented", () => {
-		const err = wireError(() => parseZoneFile("$GENERATE 1-5 host$ A 10.0.0.$"));
-		expect(err).toBeInstanceOf(WireError);
+		const err = zoneError(() => parseZoneFile("$GENERATE 1-5 host$ A 10.0.0.$"));
 		expect(err.message).toMatch(/\$GENERATE/);
 	});
 
 	it("refuses an unknown directive", () => {
-		const err = wireError(() => parseZoneFile("$SOMETHING foo"));
+		const err = zoneError(() => parseZoneFile("$SOMETHING foo"));
 		expect(err.message).toMatch(/unknown directive "\$SOMETHING"/);
 	});
 });
@@ -129,14 +130,14 @@ describe("the standard omissions", () => {
 	});
 
 	it("errors when a record has no TTL and no default exists", () => {
-		const err = wireError(() => parseZoneFile("$ORIGIN x.test.\n@ IN SOA ns admin 1 7200 900 1209600 300"));
+		const err = zoneError(() => parseZoneFile("$ORIGIN x.test.\n@ IN SOA ns admin 1 7200 900 1209600 300"));
 		expect(err.message).toMatch(/no TTL/);
 	});
 
 	it("defaults an omitted class to IN and refuses any other class", () => {
 		const { rrsets } = parseZoneFile(baseZone("www TXT \"a\"")); // no class token at all
 		expect(rrsets[0].name).toBe("www.x.test.");
-		const err = wireError(() => parseZoneFile(baseZone("www CH TXT \"a\"")));
+		const err = zoneError(() => parseZoneFile(baseZone("www CH TXT \"a\"")));
 		expect(err.message).toMatch(/only the IN class/);
 	});
 });
@@ -463,51 +464,52 @@ describe("the quack.shellback.net fixture", () => {
 });
 
 describe("malformed files", () => {
-	it("propagates the codec's error for a bad owner name", () => {
-		const err = wireError(() => parseZoneFile(baseZone("bad..name A 1.2.3.4")));
-		expect(err.code).toBe(WireErrorCode.BAD_PRESENTATION);
+	it("propagates the codec's error for a bad owner name — the wire failure underneath as cause", () => {
+		const err = zoneError(() => parseZoneFile(baseZone("bad..name A 1.2.3.4")));
 		expect(err.message).toMatch(/empty label/);
+		expect(err.message).toMatch(/master file line/);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
-	it("propagates the codec's error for rdata it rejects", () => {
-		const err = wireError(() => parseZoneFile(baseZone("foo 3600 A not-an-ip")));
-		expect(err.code).toBe(WireErrorCode.BAD_PRESENTATION);
+	it("propagates the codec's error for rdata it rejects — the wire failure underneath as cause", () => {
+		const err = zoneError(() => parseZoneFile(baseZone("foo 3600 A not-an-ip")));
 		expect(err.message).toMatch(/not an IPv4 address/);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
-	it("propagates the codec's error for an unknown type mnemonic", () => {
-		const err = wireError(() => parseZoneFile(baseZone("foo 3600 NOTATYPE x")));
-		expect(err).toBeInstanceOf(WireError);
+	it("propagates the codec's error for an unknown type mnemonic — the wire failure underneath as cause", () => {
+		const err = zoneError(() => parseZoneFile(baseZone("foo 3600 NOTATYPE x")));
 		expect(err.message).toMatch(/NOTATYPE/);
+		expect(isWireError(err.cause)).toBe(true);
 	});
 
 	it("reports an unterminated parenthesis at end of file", () => {
-		const err = wireError(() => parseZoneFile(["$ORIGIN x.test.", "$TTL 3600", "@ 3600 IN TXT (a"].join("\n")));
+		const err = zoneError(() => parseZoneFile(["$ORIGIN x.test.", "$TTL 3600", "@ 3600 IN TXT (a"].join("\n")));
 		expect(err.message).toMatch(/unbalanced '\('/);
 	});
 
 	it("reports an unterminated quoted string at end of file", () => {
-		const err = wireError(() => parseZoneFile(baseZone("@ 3600 IN TXT \"abc")));
+		const err = zoneError(() => parseZoneFile(baseZone("@ 3600 IN TXT \"abc")));
 		expect(err.message).toMatch(/unterminated quoted string/);
 	});
 
 	it("reports a stray ')'", () => {
-		const err = wireError(() => parseZoneFile(baseZone("www 3600 A 1.2.3.4)")));
+		const err = zoneError(() => parseZoneFile(baseZone("www 3600 A 1.2.3.4)")));
 		expect(err.message).toMatch(/unbalanced '\)'/);
 	});
 
 	it("errors on a blank owner with no previous owner", () => {
-		const err = wireError(() => parseZoneFile("$ORIGIN x.test.\n A 1.2.3.4"));
+		const err = zoneError(() => parseZoneFile("$ORIGIN x.test.\n A 1.2.3.4"));
 		expect(err.message).toMatch(/no owner/);
 	});
 
 	it("errors on a second SOA record", () => {
-		const err = wireError(() => parseZoneFile(baseZone("@ 3600 IN SOA ns2 admin 2 7200 900 1209600 300")));
+		const err = zoneError(() => parseZoneFile(baseZone("@ 3600 IN SOA ns2 admin 2 7200 900 1209600 300")));
 		expect(err.message).toMatch(/one SOA record/);
 	});
 
 	it("errors when the file has no SOA record", () => {
-		const err = wireError(() => parseZoneFile("$ORIGIN x.test.\nwww 3600 A 1.2.3.4"));
+		const err = zoneError(() => parseZoneFile("$ORIGIN x.test.\nwww 3600 A 1.2.3.4"));
 		expect(err.message).toMatch(/no SOA record/);
 	});
 });

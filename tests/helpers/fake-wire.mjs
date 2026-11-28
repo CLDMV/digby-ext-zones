@@ -13,13 +13,13 @@
  */
 
 /**
- * @fileoverview The fake wire surface the committed suite runs against until the wire extension exists
- * (CLDMV/digby#42). Its SHAPE is exactly the adapter's contract — the nested `self.wire.*` leaf paths the delegation tests
- * in `tests/zones/codec.test.vitest.mjs` pin — with behaviour-free stubs that record their calls, a literal TYPE/CLASS
- * table, and the minimum name handling the compiler suite needs (plain, unescaped, absolute names — the compiler's
- * fixtures never use escapes, wildcards only as whole labels). It has no codec logic of its own: every stub is replaced
- * by the real wire extension's leaf when #42 lands, and the parked suites in `tests/needs-wire/` run against the real
- * codec through the seam.
+ * @fileoverview The fake wire surface the committed suite runs against. Its SHAPE is exactly the adapter's contract —
+ * the nested `self.wire.*` leaf paths the delegation tests in `tests/zones/codec.test.vitest.mjs` pin, in the wire's
+ * landed form (e835c9f): `domain.*` for names, `type.mnemonic` / `class.mnemonic`, the constants and error codes as
+ * zero-arg data leaves answering frozen tables, and `errors.is` as the error predicate (the wire's error class is not a
+ * leaf). The stubs are behaviour-free and record their calls; the only name handling the compiler suite needs is plain,
+ * unescaped, absolute names (the fixtures never use escapes, wildcards only as whole labels). It has no codec logic of
+ * its own: the parked suites in `tests/needs-wire/` run against the real codec through the seam.
  */
 
 const encoder = new TextEncoder();
@@ -46,7 +46,7 @@ export class FakeWireError extends Error {
 	}
 }
 
-/** The fake wire's error-code table (a stand-in for the real `WireErrorCode`). */
+/** The fake wire's error-code table (what its `errors.codes()` leaf answers — a stand-in for the real one). */
 export const fakeCodes = Object.freeze({ BAD_PRESENTATION: "BAD_PRESENTATION", RELATIVE_NAME: "RELATIVE_NAME", BAD_RDATA: "BAD_RDATA" });
 
 /**
@@ -101,21 +101,21 @@ export const fakeWire = {
 			return `record(${type}, ${JSON.stringify(data)})`;
 		}
 	},
-	name: {
+	domain: {
 		parse: (name) => {
-			log("name.parse", [name]);
+			log("domain.parse", [name]);
 			return parseFakeName(name);
 		},
 		format: (labels) => {
-			log("name.format", [labels]);
+			log("domain.format", [labels]);
 			return formatFakeName(labels);
 		},
 		canonical: (name, origin) => {
-			log("name.canonical", [name, origin]);
+			log("domain.canonical", [name, origin]);
 			return name; // the fake canonicalizes nothing
 		},
 		key: (name) => {
-			log("name.key", [name]);
+			log("domain.key", [name]);
 			return String(name).toLowerCase();
 		}
 	},
@@ -144,19 +144,29 @@ export const fakeWire = {
 		}
 	},
 	type: {
-		name: (type) => {
-			log("type.name", [type]);
+		mnemonic: (type) => {
+			log("type.mnemonic", [type]);
 			return fakeMnemonic(type);
 		}
 	},
 	class: {
-		name: (cls) => {
-			log("class.name", [cls]);
+		mnemonic: (cls) => {
+			log("class.mnemonic", [cls]);
 			return cls === fakeCLASS.IN ? "IN" : `CLASS${cls}`;
 		}
 	},
-	constants: { TYPE: fakeTYPE, CLASS: fakeCLASS },
-	errors: { WireError: FakeWireError, codes: fakeCodes }
+	// The data leaves are zero-arg functions answering frozen tables (the wire's A1 form) — silent, they carry no calls.
+	constants: {
+		type: () => fakeTYPE,
+		class: () => fakeCLASS
+	},
+	errors: {
+		is: (err) => {
+			log("errors.is", [err]);
+			return err instanceof FakeWireError;
+		},
+		codes: () => fakeCodes
+	}
 };
 
 /**
