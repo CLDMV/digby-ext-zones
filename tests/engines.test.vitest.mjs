@@ -54,4 +54,17 @@ describe("engines.node", () => {
 		const dependencyFloor = floorOf(slothlet.engines.node);
 		expect(compare(ownFloor, dependencyFloor), `engines.node ${own.engines.node} vs slothlet ${slothlet.engines.node}`).toBeGreaterThanOrEqual(0);
 	});
+
+	it("is at least 24.15.0 — the node24 floor rides this branch (the wire and server extensions already sit on 24.15.0)", () => {
+		const own = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+		expect(compare(floorOf(own.engines.node), [24, 15, 0]), `engines.node ${own.engines.node}`).toBeGreaterThanOrEqual(0);
+	});
+
+	it("devEngines.runtime.version is at least 24.15.0, and never lower than engines", () => {
+		const own = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+		const dev = own.devEngines?.runtime;
+		expect(dev?.name).toBe("node");
+		expect(compare(floorOf(dev.version), [24, 15, 0]), `devEngines.runtime.version ${dev.version}`).toBeGreaterThanOrEqual(0);
+		expect(compare(floorOf(dev.version), floorOf(own.engines.node)), "devEngines is never below engines").toBeGreaterThanOrEqual(0);
+	});
 });
