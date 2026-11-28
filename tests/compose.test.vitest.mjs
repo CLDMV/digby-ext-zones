@@ -73,4 +73,34 @@ describe("the composed zones surface (CLDMV/digby#42)", () => {
 		expect(out.snapText).toContain("ns1 A 192.0.2.1");
 	});
 
+	it("a wire refusal caught through the composed api satisfies errors.is — the predicate is the contract", async () => {
+		let caught = null;
+		try {
+			// A relative owner name: the exporter's parse refuses, wrapping the wire failure as cause.
+			await t.api.zones.export.zone({ name: "example.", soa: { mname: "ns1.example.", rname: "h.example.", serial: 1, refresh: 1, retry: 1, expire: 1, minimum: 300 } }, [{ name: "a.example", type: 1, records: [{ address: "192.0.2.1" }] }]);
+		} catch (err) {
+			caught = { code: err.code, isWire: await t.api.wire.errors.is(err.cause) };
+		}
+		expect(caught.code).toBe("BAD_OWNER");
+		expect(caught.isWire).toBe(true);
+	});
+});
+
+describe("byte-bearing rdata survives the deep freeze (Friday review r2 blocker 1)", () => {
+	it("compiles a zone carrying TXT, DS, SSHFP and generic \\# rdata — array-buffer views are skipped, not frozen", async () => {
+		const text =
+			BASE +
+			['@ TXT "hello"', "@ DS 1 8 2 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF", "@ SSHFP 1 1 0123456789abcdef0123456789abcdef01234567", "@ TYPE65280 \\# 2 abcd"].join("\n") +
+			"\n";
+		const parsed = await t.api.zones.import.file(text);
+		const snap = await t.api.zones.compile(parsed.zone, parsed.rrsets, null, { now: 0 });
+		const snapText = await t.api.zones.export.snapshot(snap);
+		const out = { types: Object.keys(snap.views.all.nodes["example."].rrsets).map(Number).sort((a, b) => a - b), text: snapText };
+		// SOA is apex-under-its-type-number too; the four byte-bearing types compiled instead of throwing.
+		expect(out.types).toContain(16); // TXT
+		expect(out.types).toContain(43); // DS
+		expect(out.types).toContain(44); // SSHFP
+		expect(out.types).toContain(65280); // the generic \# form
+		expect(out.text).toContain("hello");
+	});
 });

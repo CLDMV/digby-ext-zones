@@ -569,13 +569,16 @@ function baseSerial(policy, now) {
 }
 
 /**
- * Freeze a value deeply (plain objects and arrays; typed arrays cannot hold a freeze — noted in docs/snapshot.md).
+ * Freeze a value deeply (plain objects and arrays). An ArrayBuffer view (a Uint8Array rdata value, most often) is
+ * SKIPPED, not frozen: `Object.freeze` on a typed array with elements throws ("Cannot freeze array buffer views with
+ * elements"), so freezing one would refuse every zone carrying TXT, DS, SSHFP or generic `\#` rdata. The bytes stay
+ * unfrozen and read-only by convention — noted in docs/snapshot.md.
  * @template T
  * @param {T} v
  * @returns {T}
  */
 export function deepFreeze(v) {
-	if (v !== null && typeof v === "object") {
+	if (v !== null && typeof v === "object" && !ArrayBuffer.isView(v)) {
 		for (const k of Object.keys(v)) deepFreeze(v[k]);
 		Object.freeze(v);
 	}
