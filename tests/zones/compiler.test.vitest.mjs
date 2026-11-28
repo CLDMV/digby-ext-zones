@@ -490,6 +490,43 @@ describe("serial", () => {
 		expect(compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], first, { now: NOW }).serial).toBe(2);
 	});
 
+	it("the serial is a 32-bit space (RFC 1982): increment at 2^32-1 wraps to 0, not 2^32", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		const atTop = { serial: 4294967295, views: {} };
+		const snap = compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], atTop, { now: NOW });
+		expect(snap.serial).toBe(0);
+	});
+
+	it("increment one below the top does not wrap yet", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		const snap = compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], { serial: 4294967294, views: {} }, { now: NOW });
+		expect(snap.serial).toBe(4294967295);
+	});
+
+	it("unchanged content at the top of the space keeps the serial — no wrap without a bump", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		const first = compileZone(zone, base, null, { now: NOW });
+		// Same views as the previous snapshot, serial parked at the top of the space: unchanged content keeps it.
+		const atTop = { ...first, serial: 4294967295 };
+		const snap = compileZone(zone, base, atTop, { now: NOW });
+		expect(snap.serial).toBe(4294967295);
+	});
+
+	it("date policy: the monotonic guard's bump past 2^32-1 wraps to 0 too", () => {
+		// An increment-era serial larger than today's date form: the guard bumps prev + 1, which wraps.
+		const snap = compileZone(homelabZone(), [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], { serial: 4294967295, views: {} }, { now: NOW });
+		expect(snap.serial).toBe(0);
+	});
+
+	it("a serial is never emitted past 2^32-1", () => {
+		const zone = homelabZone({ serialPolicy: "increment" });
+		for (const previous of [0, 1, 4294967294, 4294967295]) {
+			const snap = compileZone(zone, [...base, rr("app.homelab.cldmv.net.", TYPE.A, [A("10.0.0.2")])], { serial: previous, views: {} }, { now: NOW });
+			expect(snap.serial).toBeGreaterThanOrEqual(0);
+			expect(snap.serial).toBeLessThanOrEqual(4294967295);
+		}
+	});
+
 	it("no bump when the content is unchanged", () => {
 		const first = compileZone(homelabZone(), base, null, { now: NOW });
 		const again = compileZone(homelabZone(), [...base], first, { now: NOW });

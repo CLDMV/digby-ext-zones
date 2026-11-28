@@ -431,11 +431,14 @@ function nextSerial(zone, views, previous, now) {
 	if (!contentChanged(views, previous) && prev !== null) return prev;
 
 	const policy = zone.serialPolicy ?? "date";
-	if (policy === "increment") return (prev ?? 0) + 1; // +1, never below the previous by construction
+	// +1 in the 32-bit space: at the top of the range the increment wraps to 0 — the RFC 1982 rollover, not a regression.
+	if (policy === "increment") return wrapSerial((prev ?? 0) + 1);
 
 	// date: YYYYMMDDNN (RFC 1912). Same calendar day as the previous serial -> NN+1; NN saturating at 99 rolls to the
 	// next day at 01. Anything else starts the day at 01. Monotonic guard last: a candidate at or below the previous
-	// serial (a clock stepped back, or an increment-era serial larger than today's date form) becomes prev + 1.
+	// serial (a clock stepped back, or an increment-era serial larger than today's date form) becomes prev + 1. The
+	// serial is a 32-bit space (RFC 1982), so every path wraps through wrapSerial — a serial past 2^32-1 rolls to 0 and
+	// is never emitted past the space.
 	const day = now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate();
 	let candidate;
 	if (prev !== null && Math.floor(prev / 100) === day) {
@@ -444,7 +447,18 @@ function nextSerial(zone, views, previous, now) {
 		candidate = day * 100 + 1;
 	}
 	if (prev !== null && candidate <= prev) candidate = prev + 1;
-	return candidate;
+	return wrapSerial(candidate);
+}
+
+/**
+ * Wrap a candidate serial into the 32-bit space the DNS protocol carries (RFC 1982 serial arithmetic): a serial past
+ * 2^32-1 rolls to 0. The single place the wrap applies — the increment path and the date path's day and monotonic
+ * guard all produce plain candidates, and this closes each of them into [0, 2^32-1].
+ * @param {number} candidate
+ * @returns {number} the serial, in [0, 2^32-1]
+ */
+function wrapSerial(candidate) {
+	return ((candidate % 0x100000000) + 0x100000000) % 0x100000000;
 }
 
 /**
