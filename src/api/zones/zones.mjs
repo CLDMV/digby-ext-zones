@@ -38,6 +38,15 @@ export function activate(context) {
 			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — reading its surface (self.wire) failed (${err?.message ?? err}). Is wire in the app, and does this package declare it in its package.json dependencies?`
 		);
 	}
+	// A host that never mounted wire (the fixture host whose manifest drops `requires`) reads `self.wire` as undefined
+	// INSIDE a composed extent — the off-extent refusal is the branch above, this one is the undefined surface — so
+	// name it before setWire's shape check, which would only say "must be an object" (the server extension's activate
+	// has the same second branch).
+	if (typeof wire?.errors?.is !== "function") {
+		throw new Error(
+			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — self.wire.errors.is is ${wire === undefined ? "undefined" : typeof wire?.errors?.is}, not a function: the wire surface is not mounted or does not publish errors.is`
+		);
+	}
 	// setWire fails fast on a wrong-shaped surface (a missing or mistyped leaf), BEFORE replacing the capture.
 	setWire(wire);
 
