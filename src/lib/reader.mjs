@@ -42,7 +42,9 @@ import { splitRecords } from "./reader-lines.mjs";
  * @property {null} view - always null (all views); views are not a master-file concept
  * @property {number} ttl - the group's first record's TTL
  * @property {object[]} records - the parsed rdata values, in file order
- * @property {string|null} comment - the trailing `;` comment of the record line that opened the group
+ * @property {string|null} comment - the trailing `;` comment of the group's first record — read from that record's LAST
+ *   physical line, where a trailing comment naturally sits (identical to the opening line for the common single-line
+ *   record; see the `comment` field of `MasterRecord` in reader-lines.mjs)
  * @property {"manual"} source
  */
 

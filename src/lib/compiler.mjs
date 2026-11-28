@@ -206,8 +206,9 @@ function isTtl(ttl) {
 /**
  * The wildcard rule: a `*` may appear only as the sole character of the owner's FIRST label (a normal `*.example.` style
  * wildcard one or more labels below the apex); a `*` in any other label, or inside a label (`ab*d`), is refused. The apex
- * itself can never carry the `*` (it is a different name), so no separate apex check is needed. A backslash-escaped octet
- * is never a wildcard, whatever it escapes.
+ * itself can never carry the `*` (it is a different name), so no separate apex check is needed. Escapes do NOT exempt a
+ * star: the parser decodes presentation escapes before labels reach this check, so `\*` and `\052` arrive as the byte
+ * 0x2a like any other star — inside a label it is refused, and as the sole character of the first label it IS the wildcard.
  * @param {Uint8Array[]} labels
  * @param {string} name - for the message only
  * @param {{ zone: string, view: string|null }} ctx
