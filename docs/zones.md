@@ -10,6 +10,7 @@
 | **required** | no |
 | **activation** | `onStartup` |
 | **soft deps** | — |
+| **requires** | `@cldmv/digby-ext-wire` (the DNS wire codec, built by CLDMV/digby#42 — the manifest mounts and activates it before zones) |
 
 ## What it does
 

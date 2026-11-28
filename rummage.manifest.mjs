@@ -27,9 +27,19 @@
  *   required           true if the user must not be able to disable it
  *   platforms          ["desktop"] etc. — omit to activate everywhere
  *   server.attach      an exports subpath exporting attachServer(app, host), for web
+ *   requires           EXTENSION package names the loader mounts and activates BEFORE this one
  */
 
 export default {
 	protocol: { version: "1.0" },
-	i18n: { prefix: "zones" }
+	i18n: { prefix: "zones" },
+	// The DNS wire codec lives in the wire extension; the root leaf captures its surface
+	// (self.wire) into the codec seam at activate (src/lib/codec.mjs). Built by CLDMV/digby#42.
+	requires: ["@cldmv/digby-ext-wire"],
+	// The peer-callable surface (rummage composes default-deny — without an entry a peer's
+	// self.<mount>.<leaf> call is refused with PERMISSION_DENIED): the four leaves another
+	// extension may call, the same four the compose suite exercises as a peer through t.run.
+	// Nothing else is published: the settings leaves are the host's (the settings UI reaches
+	// them with host standing), and activate/deactivate stay the host's.
+	public: ["import.file", "compile", "export.zone", "export.snapshot"]
 };
