@@ -14,11 +14,12 @@ export default defineConfig({
 	root,
 	test: {
 		include: ["tests/**/*.test.vitest.mjs"],
-		// tests/needs-wire/ parks the reader/exporter suites until the wire extension lands (#42) — see its README.
-		exclude: ["node_modules", "tests/needs-wire/**"],
+		exclude: ["node_modules"],
 		environment: "node",
-		// Capture the fake wire surface before any test loads (the root leaf's activate() does this for real).
-		setupFiles: ["./tests/setup-wire.mjs"],
+		// No global wire setup: each suite captures the surface it means to test — the unit suites the fake
+		// (tests/setup-wire.mjs, first import), the real-codec suites the real wire (tests/helpers/real-wire.mjs), and
+		// the composed-host suites whatever activate() captures at boot. A global capture here once masked activate's
+		// wire fail-fast behind the fake's parse error.
 		// Inline slothlet and rummage so composed leaves are attributed in coverage (see slothlet docs/TESTING.md).
 		server: { deps: { inline: [/@cldmv\/slothlet/, /@cldmv\/rummage/] } },
 		testTimeout: 30000,

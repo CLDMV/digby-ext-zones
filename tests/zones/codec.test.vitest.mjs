@@ -20,6 +20,9 @@
  * codes, and a wire failure arriving as `cause`.
  */
 
+// The fake wire, captured before anything else evaluates — THIS suite's stand-in only (see tests/setup-wire.mjs).
+import "../setup-wire.mjs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	CLASS,

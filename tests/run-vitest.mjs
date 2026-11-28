@@ -59,9 +59,6 @@ const code = await run({
 	vitestConfig: ".configs/vitest.config.mjs",
 	// CLDMV standing convention: vitest test files are always named `*.test.vitest.mjs`.
 	testFilePattern: /\.test\.vitest\.mjs$/,
-	// tests/needs-wire/ parks the reader/exporter suites until the wire extension lands (#42) — the runner's own
-	// discovery must skip them too, not just the vitest config's include/exclude.
-	exclude: ["tests/needs-wire/**"],
 	testPatterns,
 	workers,
 	coverageQuiet,
