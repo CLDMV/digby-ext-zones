@@ -38,6 +38,33 @@ export function activate(context) {
 			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — reading its surface (self.wire) failed (${err?.message ?? err}). Is wire in the app, and does this package declare it in its package.json dependencies?`
 		);
 	}
+	// A host that never mounted wire (the fixture host whose manifest drops `requires`) reads `self.wire` as undefined
+	// INSIDE a composed extent — the off-extent refusal is the branch above, this one is the undefined surface — so
+	// name it before setWire's shape check, which would only say "must be an object" (the server extension's activate
+	// has the same second branch).
+	if (typeof wire?.errors?.is !== "function") {
+		throw new Error(
+			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — self.wire.errors.is is ${wire === undefined ? "undefined" : typeof wire?.errors?.is}, not a function: the wire surface is not mounted or does not publish errors.is`
+		);
+	}
+	// THE BOOT PROBE: setWire's shape check reads properties, and property READS are not gated — a wire whose manifest
+	// stopped publishing a required leaf still hands zones a function object whose every CALL is refused
+	// (PERMISSION_DENIED) at decode time. One real cross-extent call at boot catches that at mount time instead:
+	// `errors.is` on a plain Error is a pure read-side call (it answers false and touches nothing) that must go
+	// through the publication gate.
+	let probe;
+	try {
+		probe = wire.errors.is(new Error("digby-ext-zones boot probe"));
+	} catch (err) {
+		throw new Error(
+			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — the errors.is leaf refused the boot probe call (${err?.message ?? err}). Is wire's manifest still publishing errors.is?`
+		);
+	}
+	if (probe !== false) {
+		throw new Error(
+			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — the errors.is boot probe answered ${String(probe)} for a plain Error, not false: the captured surface is not the wire codec's`
+		);
+	}
 	// setWire fails fast on a wrong-shaped surface (a missing or mistyped leaf), BEFORE replacing the capture.
 	setWire(wire);
 

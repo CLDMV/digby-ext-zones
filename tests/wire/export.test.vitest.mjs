@@ -1,6 +1,6 @@
 /**
  *	@Project: @cldmv/digby-ext-zones
- *	@Filename: /tests/zones/export.test.vitest.mjs
+ *	@Filename: /tests/wire/export.test.vitest.mjs
  *	@Date: 2026-11-22T10:10:00-08:00 (1795370100)
  *	@Author: Nate Corcoran <CLDMV>
  *	@Email: <Shinrai@users.noreply.github.com>
@@ -18,6 +18,9 @@
  * deep-equals the input values, and `compileZone` over the re-parsed snapshot text reproduces the original snapshot's views
  * with the serial standing still. The minimal-faithful forms ($TTL, TTL omission, relative owners) are asserted on the text.
  */
+
+// The REAL wire, captured into the seam before anything else evaluates (see tests/helpers/real-wire.mjs).
+import "../helpers/real-wire.mjs";
 
 import { describe, expect, it } from "vitest";
 import { compileZone } from "../../src/lib/compiler.mjs";

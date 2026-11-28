@@ -16,9 +16,12 @@
  * @fileoverview The api leaves' suite: `self.zones.import.file`, `self.zones.compile`, `self.zones.export.zone` and
  * `self.zones.export.snapshot` are thin leaves over the lib, and the root leaf's `activate()` captures `self.wire` into
  * the seam. Called before activate (no captured surface), every leaf refuses with `ZoneError WIRE_NOT_READY`; after
- * activate (the setup file captures the fake — `tests/setup-wire.mjs`), they route through the fake wire. No leaf test
- * imports another extension: the wire arrives only through the seam.
+ * the capture (this suite's first import — `tests/setup-wire.mjs` — captures the fake), they route through the fake
+ * wire. No leaf test imports another extension: the wire arrives only through the seam.
  */
+
+// The fake wire, captured before anything else evaluates — THIS suite's stand-in only (see tests/setup-wire.mjs).
+import "../setup-wire.mjs";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import importFile from "../../src/api/zones/import/file.mjs";

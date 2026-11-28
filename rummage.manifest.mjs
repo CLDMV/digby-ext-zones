@@ -35,5 +35,11 @@ export default {
 	i18n: { prefix: "zones" },
 	// The DNS wire codec lives in the wire extension; the root leaf captures its surface
 	// (self.wire) into the codec seam at activate (src/lib/codec.mjs). Built by CLDMV/digby#42.
-	requires: ["@cldmv/digby-ext-wire"]
+	requires: ["@cldmv/digby-ext-wire"],
+	// The peer-callable surface (rummage composes default-deny — without an entry a peer's
+	// self.<mount>.<leaf> call is refused with PERMISSION_DENIED): the four leaves another
+	// extension may call, the same four the compose suite exercises as a peer through t.run.
+	// Nothing else is published: the settings leaves are the host's (the settings UI reaches
+	// them with host standing), and activate/deactivate stay the host's.
+	public: ["import.file", "compile", "export.zone", "export.snapshot"]
 };

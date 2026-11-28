@@ -11,6 +11,9 @@
  * its own errors.
  */
 
+// The fake wire, captured before anything else evaluates — THIS suite's stand-in only (see tests/setup-wire.mjs).
+import "../setup-wire.mjs";
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { exportSnapshot, exportZone } from "../../src/lib/export.mjs";
 import { TYPE, isWireError, setWire } from "../../src/lib/codec.mjs";

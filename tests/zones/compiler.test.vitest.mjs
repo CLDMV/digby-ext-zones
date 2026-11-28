@@ -18,6 +18,9 @@
  * tests pin the clock through `compileZone`'s `now` option so the suite is deterministic.
  */
 
+// The fake wire, captured before anything else evaluates — THIS suite's stand-in only (see tests/setup-wire.mjs).
+import "../setup-wire.mjs";
+
 import { describe, expect, it } from "vitest";
 import { below, compileZone, DEFAULT_TTL, IMPLICIT_VIEW } from "../../src/lib/compiler.mjs";
 import { TYPE, isWireError } from "../../src/lib/codec.mjs";

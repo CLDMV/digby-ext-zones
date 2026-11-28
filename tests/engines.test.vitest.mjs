@@ -67,4 +67,17 @@ describe("engines.node", () => {
 		expect(compare(floorOf(dev.version), [24, 15, 0]), `devEngines.runtime.version ${dev.version}`).toBeGreaterThanOrEqual(0);
 		expect(compare(floorOf(dev.version), floorOf(own.engines.node)), "devEngines is never below engines").toBeGreaterThanOrEqual(0);
 	});
+
+	it("the workflows pin the same floor — every min_node_version value in publish.yml and ci.yml is at least 24.15.0", () => {
+		for (const workflow of ["publish.yml", "ci.yml"]) {
+			const lines = fs.readFileSync(path.join(root, ".github", "workflows", workflow), "utf8").split("\n");
+			const pins = [];
+			for (let i = 0; i < lines.length; i++) {
+				if (!lines[i].includes("min_node_version")) continue;
+				for (const line of lines.slice(i, i + 5)) for (const m of line.matchAll(/['"](\d+\.\d+\.\d+)['"]/g)) pins.push(m[1]);
+			}
+			expect(pins.length, `${workflow} pins min_node_version`).toBeGreaterThan(0);
+			for (const pin of pins) expect(compare(floorOf(`>= ${pin}`), [24, 15, 0]), `${workflow}: min_node_version ${pin}`).toBeGreaterThanOrEqual(0);
+		}
+	});
 });

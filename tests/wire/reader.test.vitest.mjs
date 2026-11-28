@@ -1,6 +1,6 @@
 /**
  *	@Project: @cldmv/digby-ext-zones
- *	@Filename: /tests/zones/reader.test.vitest.mjs
+ *	@Filename: /tests/wire/reader.test.vitest.mjs
  *	@Date: 2026-11-22T09:41:47-08:00 (1795369307)
  *	@Author: Nate Corcoran <CLDMV>
  *	@Email: <Shinrai@users.noreply.github.com>
@@ -17,6 +17,9 @@
  * presentation parser — directives, the standard omissions (owner, TTL, class), parenthesised multi-line records, quoted
  * strings and escapes, the refusal of unimplemented directives, and the two fixture zones parsed end to end.
  */
+
+// The REAL wire, captured into the seam before anything else evaluates (see tests/helpers/real-wire.mjs).
+import "../helpers/real-wire.mjs";
 
 import { describe, expect, it } from "vitest";
 import { parseZoneFile } from "../../src/lib/reader.mjs";

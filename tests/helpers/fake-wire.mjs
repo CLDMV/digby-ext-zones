@@ -13,13 +13,13 @@
  */
 
 /**
- * @fileoverview The fake wire surface the committed suite runs against. Its SHAPE is exactly the adapter's contract —
+ * @fileoverview The fake wire surface the unit suites run against. Its SHAPE is exactly the adapter's contract —
  * the nested `self.wire.*` leaf paths the delegation tests in `tests/zones/codec.test.vitest.mjs` pin, in the wire's
  * landed form (e835c9f): `domain.*` for names, `type.mnemonic` / `class.mnemonic`, the constants and error codes as
  * zero-arg data leaves answering frozen tables, and `errors.is` as the error predicate (the wire's error class is not a
  * leaf). The stubs are behaviour-free and record their calls; the only name handling the compiler suite needs is plain,
  * unescaped, absolute names (the fixtures never use escapes, wildcards only as whole labels). It has no codec logic of
- * its own: the parked suites in `tests/needs-wire/` run against the real codec through the seam.
+ * its own: the real-codec suites in `tests/wire/` run against the real codec through the seam (`tests/helpers/real-wire.mjs`), and the composed-host suite against the wire extension's own surface — never this stand-in.
  */
 
 const encoder = new TextEncoder();

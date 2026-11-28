@@ -40,9 +40,10 @@
  * and zones' own refusals carry it as `cause`. The message codec and framer — decode/encode/encodeCapped/framer — are
  * not part of zones' surface and are left out, here and in the fake, on purpose.)
  *
- * The committed suite runs against a shape-only fake of this surface (`tests/helpers/fake-wire.mjs`, captured by
- * `tests/setup-wire.mjs`); the parked reader/exporter suites in `tests/needs-wire/` run against the real codec once #42
- * composes the wire extension next to zones.
+ * The unit suites run against a shape-only fake of this surface (`tests/helpers/fake-wire.mjs`, captured per suite by
+ * `tests/setup-wire.mjs`); the reader/exporter suites in `tests/wire/` run against the REAL codec
+ * (`tests/helpers/real-wire.mjs`), and the composed-host suite against the wire extension's own surface through
+ * activate's capture.
  */
 
 import { ZoneError, ZoneErrorCode } from "./errors.mjs";

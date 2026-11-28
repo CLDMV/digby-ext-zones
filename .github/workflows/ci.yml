@@ -59,7 +59,7 @@ on:
                 required: false
                 default: "lts/*"
             min_node_version:
-                description: "Minimum Node.js version for matrix testing (default: 24.15.0 — the package's devEngines runtime floor; the node24 floor rides the zones r2 branch)"
+                description: "Minimum Node.js version for matrix testing (default: 24.15.0 — the package's devEngines runtime floor)"
                 type: string
                 required: false
                 default: "24.15.0"

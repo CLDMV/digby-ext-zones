@@ -13,10 +13,12 @@
  */
 
 /**
- * @fileoverview The committed suite's wire: capture the fake wire surface before any test loads, standing in for the root
- * leaf's `activate()` (which captures `self.wire` at mount time). Every suite that reaches the wire does so through the
- * seam — see `tests/helpers/fake-wire.mjs` and, when the wire extension lands (#42), the parked suites in
- * `tests/needs-wire/`.
+ * @fileoverview The unit suites' wire: the FAKE surface, captured when a suite imports this file — first import, so the
+ * suites' module-level `TYPE` reads see the capture too. Suite-scoped by design: the composed-host suites
+ * (tests/compose.test.vitest.mjs, tests/compose-no-wire.test.vitest.mjs) and the real-codec suites (tests/wire/) must
+ * exercise the REAL wire — activate's own capture, or `tests/helpers/real-wire.mjs` — never this stand-in. (A GLOBAL
+ * setup here is exactly what once masked activate's wire fail-fast behind the fake's parse error: the fake was already
+ * captured when a boot without wire should have failed loudly.)
  */
 
 import { setWire } from "../src/lib/codec.mjs";
