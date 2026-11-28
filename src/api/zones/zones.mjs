@@ -10,14 +10,13 @@
  * extension still works without them.
  */
 
+import { self } from "@cldmv/rummage/runtime";
 import { setupSettings } from "@cldmv/rummage/storage";
 import { settings as _settingsSchema } from "../../../sql/settings.mjs";
 // Uncomment when you have tables to query:
 // import { eq } from "@cldmv/rummage/storage";
 // import { someTable } from "../../../sql/schema.mjs";
 import { setWire } from "../../lib/codec.mjs";
-
-export const name = "zones";
 
 export function activate(context) {
 	// Wire this extension's settings declaration to its storage scope so the
@@ -26,12 +25,21 @@ export function activate(context) {
 	// cross-extension call into our settings leaves.
 	setupSettings({ settings: _settingsSchema, scope: context.storage, extId: context.extId });
 
-	// Capture the wire extension's surface into the codec seam (src/lib/codec.mjs). `self` is
-	// in-call-only — activate is a call, so this is the one place `self.wire` resolves; the seam
-	// holds the capture and every lib read resolves it per call. Requires the wire extension
-	// (manifest `requires: ["@cldmv/digby-ext-wire"]`), mounted and activated before this runs;
-	// a wrong-shaped surface fails fast here.
-	setWire(self.wire);
+	// Capture the wire extension's surface into the codec seam (src/lib/codec.mjs). The wire extension (manifest
+	// `requires: ["@cldmv/digby-ext-wire"]`) is mounted and activated BEFORE this leaf runs. `self` is in-call-only —
+	// activate is a call, so this is the one place `self.wire` resolves; the seam holds the capture and every lib read
+	// resolves it per call. Fail fast, loudly, with the surface named: a missing or unpublished wire extension is a
+	// mount-time error, not a decode-time one (the same pattern the server extension's activate uses).
+	let wire;
+	try {
+		wire = self.wire;
+	} catch (err) {
+		throw new Error(
+			`digby-ext-zones requires the @cldmv/digby-ext-wire extension — reading its surface (self.wire) failed (${err?.message ?? err}). Is wire in the app, and does this package declare it in its package.json dependencies?`
+		);
+	}
+	// setWire fails fast on a wrong-shaped surface (a missing or mistyped leaf), BEFORE replacing the capture.
+	setWire(wire);
 
 	// Reading own settings (fast — the storage tier directly, no access check for self):
 	// const theme = await context.storage.settings.get("theme");
